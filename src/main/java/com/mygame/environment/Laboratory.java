@@ -25,7 +25,6 @@ public class Laboratory {
 
         Spatial laboModel = am.loadModel("Models/room/labo_baked.glb");
         supprimerControles(laboModel);
-        forcerUnshaded(laboModel, am);   // PBR → Unshaded pour afficher la texture baked
 
         // ── 1. Attacher au rootNode pour calculer les transforms monde ────────
         rootNode.attachChild(laboModel);
