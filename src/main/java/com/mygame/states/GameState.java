@@ -20,6 +20,7 @@ import com.jme3.scene.shape.Cylinder;
 import com.mygame.environment.DoorManager;
 import com.mygame.environment.Laboratory;
 import com.mygame.player.BatterieManager;
+import com.mygame.player.Inventory;
 import com.mygame.player.PlayerControl;
 import com.mygame.ui.HudManager;
 
@@ -34,6 +35,7 @@ public class GameState extends BaseAppState {
     private DoorManager doorManager;
     private HudManager hud;
     private BatterieManager batterie;
+    private Inventory inventaire;
 
     private AmbientLight ambiant;
     private DirectionalLight soleil;
@@ -77,6 +79,9 @@ public class GameState extends BaseAppState {
 
         // Batterie — 10 minutes pour s'échapper
         batterie = new BatterieManager(600f);
+
+        // Inventaire
+        inventaire = new Inventory();
 
         // Piles à ramasser (positions dans le labo — à ajuster)
         app.getRootNode().attachChild(pilesNode);
@@ -157,6 +162,9 @@ public class GameState extends BaseAppState {
         // ── Batterie ─────────────────────────────────────────────────────────
         batterie.update(tpf);
         hud.updateBatterie(batterie.getPourcentage());
+
+        // ── Inventaire ───────────────────────────────────────────────────────
+        hud.updateInventaire(inventaire.toAffichage());
 
         if (batterie.estVide()) {
             // TODO : déclencher GameOverState

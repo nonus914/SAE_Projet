@@ -54,6 +54,7 @@ public class HudManager {
         texteInventaire = new BitmapText(font, false);
         texteInventaire.setSize(taille);
         texteInventaire.setColor(ColorRGBA.White);
+        texteInventaire.setText("Inventaire : vide");
         texteInventaire.setLocalTranslation(10, 35, 0);
         guiNode.attachChild(texteInventaire);
 
