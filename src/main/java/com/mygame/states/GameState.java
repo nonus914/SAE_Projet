@@ -164,7 +164,7 @@ public class GameState extends BaseAppState {
             case "Reculer"    -> joueur.setBackward(isPressed);
             case "Gauche"     -> joueur.setLeft(isPressed);
             case "Droite"     -> joueur.setRight(isPressed);
-            case "Sprint"     -> { joueur.setSprint(isPressed); batterie.setSprint(isPressed); }
+            case "Sprint"     -> joueur.setSprint(isPressed);
             case "Accroupir"  -> { if (isPressed) joueur.setCrouch(!joueur.isSprint()); }
             case "VisionNuit" -> { if (isPressed) basculerVisionNuit(); }
             case "Interagir"  -> { if (isPressed) doorManager.interagir(); }
@@ -186,7 +186,7 @@ public class GameState extends BaseAppState {
         // ── Inventaire ───────────────────────────────────────────────────────
         hud.updateInventaire(inventaire.toAffichage());
 
-        if (batterie.estVide()) {
+        if (batterie.isGameOver()) {
             // TODO : déclencher GameOverState
             System.out.println("[GameState] Batterie vide → Game Over");
         }
@@ -228,7 +228,6 @@ public class GameState extends BaseAppState {
 
     private void basculerVisionNuit() {
         visionNocturne = !visionNocturne;
-        batterie.setVisionNocturne(visionNocturne);
         if (visionNocturne) {
             ambiant.setColor(new ColorRGBA(0f, 1f, 0f, 1f));
             app.getViewPort().setBackgroundColor(new ColorRGBA(0f, 0.05f, 0f, 1f));
