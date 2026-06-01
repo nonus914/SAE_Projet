@@ -43,19 +43,19 @@ public class HudManager {
         texteCroix.setLocalTranslation(largeur / 2f - 5, hauteur / 2f + 8, 0);
         guiNode.attachChild(texteCroix);
 
-        // Batterie
+        // Batterie (bas gauche)
         texteBatterie = new BitmapText(font, false);
         texteBatterie.setSize(taille);
         texteBatterie.setColor(ColorRGBA.Green);
-        texteBatterie.setLocalTranslation(10, 60, 0);
+        texteBatterie.setLocalTranslation(10, 55, 0);
         guiNode.attachChild(texteBatterie);
 
-        // Inventaire
+        // Inventaire (juste au-dessus de la batterie)
         texteInventaire = new BitmapText(font, false);
         texteInventaire.setSize(taille);
-        texteInventaire.setColor(ColorRGBA.White);
+        texteInventaire.setColor(ColorRGBA.Cyan);
         texteInventaire.setText("Inventaire : vide");
-        texteInventaire.setLocalTranslation(10, 35, 0);
+        texteInventaire.setLocalTranslation(10, 80, 0);
         guiNode.attachChild(texteInventaire);
 
         // Message interaction (Appuyez sur E)

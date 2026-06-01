@@ -23,6 +23,8 @@ public class Main extends SimpleApplication {
 
     @Override
     public void simpleInitApp() {
+        setDisplayStatView(false);   // cache les stats de debug (FPS, triangles...)
+        setDisplayFps(false);        // cache le compteur FPS
         flyCam.setEnabled(false);
         inputManager.setCursorVisible(true);
         stateManager.attach(new MenuState());
