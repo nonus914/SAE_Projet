@@ -4,6 +4,7 @@ import com.jme3.app.Application;
 import com.jme3.app.SimpleApplication;
 import com.jme3.app.state.BaseAppState;
 import com.jme3.bullet.BulletAppState;
+import com.jme3.collision.CollisionResults;
 import com.jme3.input.KeyInput;
 import com.jme3.input.controls.ActionListener;
 import com.jme3.input.controls.KeyTrigger;
@@ -12,6 +13,7 @@ import com.jme3.light.DirectionalLight;
 import com.jme3.material.Material;
 import com.jme3.math.ColorRGBA;
 import com.jme3.math.FastMath;
+import com.jme3.math.Ray;
 import com.jme3.math.Vector3f;
 import com.jme3.scene.Geometry;
 import com.jme3.scene.Node;
@@ -31,25 +33,26 @@ import java.util.List;
 public class GameState extends BaseAppState {
 
     private SimpleApplication app;
-    private BulletAppState bullet;
-    private PlayerControl joueur;
-    private DoorManager doorManager;
-    private HudManager hud;
-    private BatterieManager batterie;
-    private Inventory inventaire;
+    private BulletAppState    bullet;
+    private PlayerControl     joueur;
+    private DoorManager       doorManager;
+    private HudManager        hud;
+    private BatterieManager   batterie;
+    private Inventory         inventaire;
 
-    private AmbientLight ambiant;
+    private AmbientLight   ambiant;
     private DirectionalLight soleil;
     private boolean visionNocturne = false;
 
-    // ── Piles ramassables ────────────────────────────────────────────────────
+    // ── Piles ramassables (auto-contact) ─────────────────────────────────────
     private final Node pilesNode = new Node("Piles");
-    private final List<Vector3f> positionsPiles = new ArrayList<>();
 
-    // ── Objets à ramasser (clés, badges…) ───────────────────────────────────
+    // ── Objets ramassables (raycasting E key — système Noah) ─────────────────
     private final Node objetsNode = new Node("Objets");
 
     private final ActionListener actionListener = this::onAction;
+
+    // ─────────────────────────────────────────────────────────────────────────
 
     @Override
     protected void initialize(Application application) {
@@ -58,7 +61,7 @@ public class GameState extends BaseAppState {
         bullet = new BulletAppState();
         app.getStateManager().attach(bullet);
 
-        // Lumières PBR — ambient élevé pour compenser l'absence d'IBL/probe
+        // Lumières
         ambiant = new AmbientLight();
         ambiant.setColor(ColorRGBA.White.mult(8.0f));
         app.getRootNode().addLight(ambiant);
@@ -79,24 +82,21 @@ public class GameState extends BaseAppState {
         hands.setLocalScale(0.04f);
         nodeCamera.attachChild(hands);
 
-        joueur = new PlayerControl(bullet, app.getCamera(), nodeCamera, hands);
-
-        // Batterie — 10 minutes pour s'échapper
+        joueur   = new PlayerControl(bullet, app.getCamera(), nodeCamera, hands);
         batterie = new BatterieManager(600f);
-
-        // Inventaire
         inventaire = new Inventory();
 
-        // Piles à ramasser
+        // Piles (auto-contact)
         app.getRootNode().attachChild(pilesNode);
-        placerPile(new Vector3f(2f,  1f,  5f));
+        placerPile(new Vector3f( 2f, 1f,  5f));
         placerPile(new Vector3f(-2f, 1f, 20f));
-        placerPile(new Vector3f(1f,  1f, 36f));
+        placerPile(new Vector3f( 1f, 1f, 36f));
 
-        // Objets à ramasser
+        // Objets ramassables (E key + raycasting, marqués "Ramassable")
         app.getRootNode().attachChild(objetsNode);
-        placerCle("Clé Salle 1", new Vector3f(-1f, 1f, 6f), ColorRGBA.Yellow);
-        placerCle("Badge Accès",  new Vector3f( 1f, 1f, 22f), new ColorRGBA(0.2f, 0.8f, 1f, 1f));
+        placerObjet("Clé Salle 1",   new Vector3f(-1f, 1f,  6f), ColorRGBA.Yellow);
+        placerObjet("Badge Accès",   new Vector3f( 1f, 1f, 22f), new ColorRGBA(0.2f, 0.8f, 1f, 1f));
+        placerObjet("Carte d'accès Rouge", new Vector3f(0f, 1f, 38f), ColorRGBA.Red);
 
         // HUD
         hud = new HudManager(
@@ -116,115 +116,150 @@ public class GameState extends BaseAppState {
     }
 
     // ─────────────────────────────────────────────────────────────────────────
+    // Helpers placement
+    // ─────────────────────────────────────────────────────────────────────────
 
-    /** Crée une clé/objet doré à ramasser automatiquement au contact. */
-    private void placerCle(String nom, Vector3f pos, ColorRGBA couleur) {
-        // Corps de la clé (petit cylindre vertical)
-        Geometry corps = new Geometry(nom, new Box(0.08f, 0.25f, 0.04f));
+    /** Objet ramassable via raycasting (touche E). */
+    private void placerObjet(String nom, Vector3f pos, ColorRGBA couleur) {
+        Geometry g = new Geometry(nom, new Box(0.1f, 0.06f, 0.15f));
         Material mat = new Material(app.getAssetManager(), "Common/MatDefs/Misc/Unshaded.j3md");
         mat.setColor("Color", couleur);
-        corps.setMaterial(mat);
-        corps.setLocalTranslation(pos);
-        objetsNode.attachChild(corps);
+        g.setMaterial(mat);
+        g.setLocalTranslation(pos);
+        g.setUserData("Ramassable", true);   // marque comme ramassable (système Noah)
+        objetsNode.attachChild(g);
     }
 
+    /** Pile (recharge batterie) ramassée automatiquement au contact. */
     private void placerPile(Vector3f pos) {
-        Cylinder shape = new Cylinder(20, 20, 0.15f, 0.4f, true);
-        Geometry pile = new Geometry("Pile_" + pilesNode.getQuantity(), shape);
+        Geometry pile = new Geometry("Pile_" + pilesNode.getQuantity(),
+                                     new Cylinder(20, 20, 0.15f, 0.4f, true));
         Material mat = new Material(app.getAssetManager(), "Common/MatDefs/Misc/Unshaded.j3md");
         mat.setColor("Color", ColorRGBA.Yellow);
         pile.setMaterial(mat);
         pile.rotate(FastMath.HALF_PI, 0, 0);
         pile.setLocalTranslation(pos);
         pilesNode.attachChild(pile);
-        positionsPiles.add(pos.clone());
     }
 
     // ─────────────────────────────────────────────────────────────────────────
+    // Touches
+    // ─────────────────────────────────────────────────────────────────────────
 
     private void enregistrerTouches() {
-        app.getInputManager().addMapping("Avancer",    new KeyTrigger(KeyInput.KEY_W));
-        app.getInputManager().addMapping("Reculer",    new KeyTrigger(KeyInput.KEY_S));
-        app.getInputManager().addMapping("Gauche",     new KeyTrigger(KeyInput.KEY_A));
-        app.getInputManager().addMapping("Droite",     new KeyTrigger(KeyInput.KEY_D));
-        app.getInputManager().addMapping("Sprint",     new KeyTrigger(KeyInput.KEY_LSHIFT));
-        app.getInputManager().addMapping("Accroupir",  new KeyTrigger(KeyInput.KEY_C));
-        app.getInputManager().addMapping("VisionNuit", new KeyTrigger(KeyInput.KEY_N));
-        app.getInputManager().addMapping("Interagir",  new KeyTrigger(KeyInput.KEY_E));
-        app.getInputManager().addMapping("Sauter",     new KeyTrigger(KeyInput.KEY_SPACE));
+        app.getInputManager().addMapping("Avancer",         new KeyTrigger(KeyInput.KEY_W));
+        app.getInputManager().addMapping("Reculer",         new KeyTrigger(KeyInput.KEY_S));
+        app.getInputManager().addMapping("Gauche",          new KeyTrigger(KeyInput.KEY_A));
+        app.getInputManager().addMapping("Droite",          new KeyTrigger(KeyInput.KEY_D));
+        app.getInputManager().addMapping("Sprint",          new KeyTrigger(KeyInput.KEY_LSHIFT));
+        app.getInputManager().addMapping("Accroupir",       new KeyTrigger(KeyInput.KEY_C));
+        app.getInputManager().addMapping("VisionNuit",      new KeyTrigger(KeyInput.KEY_N));
+        app.getInputManager().addMapping("Interagir",       new KeyTrigger(KeyInput.KEY_E));
+        app.getInputManager().addMapping("Sauter",          new KeyTrigger(KeyInput.KEY_SPACE));
+        app.getInputManager().addMapping("VoirInventaire",  new KeyTrigger(KeyInput.KEY_I));
 
         app.getInputManager().addListener(actionListener,
-                "Avancer", "Reculer", "Gauche", "Droite",
-                "Sprint", "Accroupir", "VisionNuit", "Interagir", "Sauter");
+                "Avancer","Reculer","Gauche","Droite",
+                "Sprint","Accroupir","VisionNuit","Interagir","Sauter","VoirInventaire");
     }
 
     private void onAction(String name, boolean isPressed, float tpf) {
         switch (name) {
-            case "Avancer"    -> joueur.setForward(isPressed);
-            case "Reculer"    -> joueur.setBackward(isPressed);
-            case "Gauche"     -> joueur.setLeft(isPressed);
-            case "Droite"     -> joueur.setRight(isPressed);
-            case "Sprint"     -> joueur.setSprint(isPressed);
-            case "Accroupir"  -> { if (isPressed) joueur.setCrouch(!joueur.isSprint()); }
-            case "VisionNuit" -> { if (isPressed) basculerVisionNuit(); }
-            case "Interagir"  -> { if (isPressed) doorManager.interagir(); }
-            case "Sauter"     -> { if (isPressed) joueur.sauter(); }
+            case "Avancer"        -> joueur.setForward(isPressed);
+            case "Reculer"        -> joueur.setBackward(isPressed);
+            case "Gauche"         -> joueur.setLeft(isPressed);
+            case "Droite"         -> joueur.setRight(isPressed);
+            case "Sprint"         -> joueur.setSprint(isPressed);
+            case "Accroupir"      -> { if (isPressed) joueur.setCrouch(!joueur.isSprint()); }
+            case "VisionNuit"     -> { if (isPressed) basculerVisionNuit(); }
+            case "Sauter"         -> { if (isPressed) joueur.sauter(); }
+            case "VoirInventaire" -> { if (isPressed) hud.toggleInventaire(inventaire.getObjets()); }
+            case "Interagir"      -> {
+                if (isPressed) {
+                    // 1. Essayer d'ouvrir une porte
+                    boolean portOuverte = doorManager.interagir();
+                    // 2. Sinon essayer de ramasser un objet (raycasting — système Noah)
+                    if (!portOuverte) tenterDeRamasser();
+                }
+            }
         }
     }
+
+    // ─────────────────────────────────────────────────────────────────────────
+    // Raycasting (système Noah)
+    // ─────────────────────────────────────────────────────────────────────────
+
+    private void tenterDeRamasser() {
+        CollisionResults resultats = new CollisionResults();
+        Ray rayon = new Ray(app.getCamera().getLocation(), app.getCamera().getDirection());
+        app.getRootNode().collideWith(rayon, resultats);
+
+        if (resultats.size() > 0) {
+            Geometry cible    = resultats.getClosestCollision().getGeometry();
+            float    distance = resultats.getClosestCollision().getDistance();
+
+            if (distance < 3.0f && Boolean.TRUE.equals(cible.getUserData("Ramassable"))) {
+                String nom = cible.getName();
+                if (inventaire.ajouter(nom)) {
+                    cible.removeFromParent();
+                    hud.setMessageInteraction("Ramassé : " + nom);
+                    System.out.println("[GameState] Ramassé : " + nom);
+                }
+            }
+        }
+    }
+
+    // ─────────────────────────────────────────────────────────────────────────
+    // Update
+    // ─────────────────────────────────────────────────────────────────────────
 
     @Override
     public void update(float tpf) {
         if (!isEnabled()) return;
         joueur.update(tpf);
 
-        Vector3f posJoueur = joueur.getCharacterControl().getPhysicsLocation();
+        Vector3f pos = joueur.getCharacterControl().getPhysicsLocation();
 
-        // ── Batterie ─────────────────────────────────────────────────────────
+        // Batterie
         batterie.update(tpf);
         hud.updateBatterie(batterie.getPourcentage());
 
-        // ── Inventaire ───────────────────────────────────────────────────────
-        hud.updateInventaire(inventaire.toAffichage());
-
         if (batterie.isGameOver()) {
-            // TODO : déclencher GameOverState
             System.out.println("[GameState] Batterie vide → Game Over");
+            // TODO : app.getStateManager().attach(new GameOverState());
         }
 
-        // ── Ramassage de piles ────────────────────────────────────────────────
+        // Piles au contact
         for (int i = pilesNode.getQuantity() - 1; i >= 0; i--) {
             Spatial pile = pilesNode.getChild(i);
-            if (posJoueur.distanceSquared(pile.getWorldTranslation()) < 2f * 2f) {
+            if (pos.distanceSquared(pile.getWorldTranslation()) < 2f * 2f) {
                 batterie.rechargerAFond();
                 pile.removeFromParent();
                 hud.setMessageInteraction("Pile ramassée ! Batterie rechargée !");
             }
         }
 
-        // ── Ramassage de clés / objets ────────────────────────────────────────
-        for (int i = objetsNode.getQuantity() - 1; i >= 0; i--) {
-            Spatial obj = objetsNode.getChild(i);
-            if (posJoueur.distanceSquared(obj.getWorldTranslation()) < 1.5f * 1.5f) {
-                String nom = obj.getName();
-                if (inventaire.ajouter(nom)) {
-                    obj.removeFromParent();
-                    hud.setMessageInteraction("Objet ramassé : " + nom);
-                    hud.updateInventaire(inventaire.toAffichage());
-                    System.out.println("[GameState] Ramassé : " + nom);
-                }
+        // Prompt "Regarder objet → [E] Ramasser" (raycasting passif)
+        boolean porteProche = doorManager.update(pos);
+        if (porteProche) {
+            hud.setMessageInteraction("[E] Ouvrir la porte");
+        } else {
+            // Vérifie si le joueur vise un objet ramassable
+            CollisionResults r = new CollisionResults();
+            app.getRootNode().collideWith(
+                new Ray(app.getCamera().getLocation(), app.getCamera().getDirection()), r);
+            if (r.size() > 0
+                    && r.getClosestCollision().getDistance() < 3f
+                    && Boolean.TRUE.equals(r.getClosestCollision().getGeometry().getUserData("Ramassable"))) {
+                hud.setMessageInteraction("[E] Ramasser : "
+                    + r.getClosestCollision().getGeometry().getName());
+            } else {
+                hud.setMessageInteraction("");
             }
         }
-
-        // ── Portes ───────────────────────────────────────────────────────────
-        boolean porteProche = doorManager.update(posJoueur);
-        if (porteProche) hud.setMessageInteraction("[E] Ouvrir la porte");
-        else if (pilesNode.getQuantity() == 0 || posJoueur.distanceSquared(
-                pilesNode.getQuantity() > 0
-                    ? pilesNode.getChild(0).getWorldTranslation()
-                    : posJoueur) > 4f) {
-            hud.setMessageInteraction("");
-        }
     }
+
+    // ─────────────────────────────────────────────────────────────────────────
 
     private void basculerVisionNuit() {
         visionNocturne = !visionNocturne;
@@ -250,7 +285,7 @@ public class GameState extends BaseAppState {
         app.getInputManager().removeListener(actionListener);
         for (String m : new String[]{
             "Avancer","Reculer","Gauche","Droite",
-            "Sprint","Accroupir","VisionNuit","Interagir","Sauter"
+            "Sprint","Accroupir","VisionNuit","Interagir","Sauter","VoirInventaire"
         }) {
             if (app.getInputManager().hasMapping(m))
                 app.getInputManager().deleteMapping(m);
