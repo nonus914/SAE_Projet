@@ -75,8 +75,8 @@ public class GameState extends BaseAppState {
 
         joueur = new PlayerControl(bullet, app.getCamera(), nodeCamera, hands);
 
-        // Batterie
-        batterie = new BatterieManager();
+        // Batterie — 10 minutes pour s'échapper
+        batterie = new BatterieManager(600f);
 
         // Piles à ramasser (positions dans le labo — à ajuster)
         app.getRootNode().attachChild(pilesNode);

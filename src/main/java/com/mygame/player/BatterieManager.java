@@ -1,60 +1,88 @@
 package com.mygame.player;
 
 /**
- * Gère la batterie du cyborg.
- * Vidage passif sur 10 minutes, x2 en sprint, x3 en vision nocturne.
+ * Gère la batterie du joueur (temps en secondes).
+ *
+ * Fusion du code de Lotfi (base temps + game over) et de Malek (sprint/vision nuit).
+ *
+ * Drain de base : tempsMax secondes pour vider (défaut 600s = 10 min).
+ * Sprint  → drain x2.
+ * Vision nocturne → drain x3 supplémentaire.
  */
 public class BatterieManager {
 
-    // 10 minutes = 600 secondes → drain de base 100/600
-    private static final float DRAIN_BASE = 100f / 600f;
-    private static final float MULT_SPRINT = 2f;
-    private static final float MULT_NIGHT = 3f;
-    private static final float CHARGE_STATION = 30f; // % rechargé par station
+    private final float tempsMaxInitial;
+    private float batterieSec;
+    private boolean gameOver = false;
 
-    private float pourcentage = 100f;
-    private boolean enSprint = false;
+    private boolean enSprint       = false;
     private boolean visionNocturne = false;
 
+    // ── Constructeurs ─────────────────────────────────────────────────────────
+
+    /** Durée personnalisée en secondes. */
+    public BatterieManager(float tempsMaxEnSecondes) {
+        this.tempsMaxInitial = tempsMaxEnSecondes;
+        this.batterieSec     = tempsMaxEnSecondes;
+    }
+
+    /** Durée par défaut : 10 minutes. */
+    public BatterieManager() {
+        this(600f);
+    }
+
+    // ── Update ────────────────────────────────────────────────────────────────
+
     public void update(float tpf) {
-        float drain = DRAIN_BASE;
-        if (enSprint) drain *= MULT_SPRINT;
-        if (visionNocturne) drain *= MULT_NIGHT;
-        pourcentage = Math.max(0f, pourcentage - drain * tpf);
+        if (gameOver) return;
+
+        float drain = 1f; // 1 seconde par seconde de base
+        if (enSprint)       drain *= 2f;
+        if (visionNocturne) drain *= 3f;
+
+        batterieSec -= drain * tpf;
+
+        if (batterieSec <= 0) {
+            batterieSec = 0;
+            gameOver = true;
+            System.out.println("GAME OVER : La batterie est à plat !");
+        }
     }
 
-    /** Recharge depuis une station (instantané +30%). */
-    public void recharger() {
-        pourcentage = Math.min(100f, pourcentage + CHARGE_STATION);
-    }
+    // ── Recharge ──────────────────────────────────────────────────────────────
 
-    /** Recharge complète (ramasse une pile). */
+    /** Recharge complète (ramassage d'une pile). */
     public void rechargerAFond() {
-        pourcentage = 100f;
+        batterieSec = tempsMaxInitial;
+        gameOver    = false;
+        System.out.println("BATTERIE RECHARGÉE !");
     }
 
-    /** Recharge progressive depuis une station (appelé chaque frame). */
+    /** Recharge progressive depuis une station (plein en ~10 secondes). */
     public void rechargerProgressif(float tpf) {
-        pourcentage = Math.min(100f, pourcentage + 15f * tpf); // +15%/s
+        batterieSec += (tempsMaxInitial / 10f) * tpf;
+        if (batterieSec > tempsMaxInitial) batterieSec = tempsMaxInitial;
+        if (batterieSec > 0) gameOver = false;
     }
 
-    public boolean estVide()    { return pourcentage <= 0f; }
-
-    /** Alias pour compatibilité (isGameOver). */
-    public boolean isGameOver() { return estVide(); }
-
-    public float getPourcentage()   { return pourcentage; }
-
-    /** Temps restant estimé en secondes (basé sur le drain de base). */
-    public float getTempsRestant() {
-        return pourcentage / DRAIN_BASE;
+    /** Recharge instantanée partielle (+30% du max). */
+    public void recharger() {
+        batterieSec = Math.min(tempsMaxInitial, batterieSec + tempsMaxInitial * 0.30f);
     }
 
-    public void setSprint(boolean sprint) {
-        this.enSprint = sprint;
-    }
+    // ── Getters ───────────────────────────────────────────────────────────────
 
-    public void setVisionNocturne(boolean vn) {
-        this.visionNocturne = vn;
-    }
+    /** Temps restant en secondes (entier). */
+    public int getTempsRestant() { return (int) batterieSec; }
+
+    /** Pourcentage restant (0–100) pour le HUD. */
+    public float getPourcentage() { return (batterieSec / tempsMaxInitial) * 100f; }
+
+    public boolean isGameOver() { return gameOver; }
+    public boolean estVide()    { return gameOver; }
+
+    // ── Setters états ─────────────────────────────────────────────────────────
+
+    public void setSprint(boolean sprint)             { this.enSprint = sprint; }
+    public void setVisionNocturne(boolean vn)         { this.visionNocturne = vn; }
 }
