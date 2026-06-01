@@ -9,6 +9,10 @@ assets/build/
 *.jar
 *.war
 
+# Fichiers cache JME (générés automatiquement, ne pas commiter)
+*.j3o
+*.j3odata
+
 # NetBeans
 nbproject/private/
 nbproject/Makefile-*.mk
