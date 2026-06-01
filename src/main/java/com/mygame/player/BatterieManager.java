@@ -9,6 +9,7 @@ public class BatterieManager {
     private float batterieSec;
     private float tempsMaxInitial;
     private boolean gameOver;
+    private boolean enSprint = false; // x2 drain en sprint
 
     public BatterieManager(float tempsMaxEnSecondes) {
         this.tempsMaxInitial = tempsMaxEnSecondes;
@@ -16,9 +17,12 @@ public class BatterieManager {
         this.gameOver        = false;
     }
 
+    public void setSprint(boolean sprint) { this.enSprint = sprint; }
+
     public void update(float tpf) {
         if (gameOver) return;
-        batterieSec -= tpf;
+        float drain = enSprint ? tpf * 2f : tpf; // sprint = x2
+        batterieSec -= drain;
         if (batterieSec <= 0) {
             batterieSec = 0;
             gameOver = true;

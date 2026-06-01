@@ -169,7 +169,7 @@ public class GameState extends BaseAppState {
             case "Reculer"        -> joueur.setBackward(isPressed);
             case "Gauche"         -> joueur.setLeft(isPressed);
             case "Droite"         -> joueur.setRight(isPressed);
-            case "Sprint"         -> joueur.setSprint(isPressed);
+            case "Sprint"         -> { joueur.setSprint(isPressed); batterie.setSprint(isPressed); }
             case "Accroupir"      -> { if (isPressed) joueur.setCrouch(!joueur.isCrouch()); }
             case "VisionNuit"     -> { if (isPressed) basculerVisionNuit(); }
             case "Sauter"         -> { if (isPressed) joueur.sauter(); }
