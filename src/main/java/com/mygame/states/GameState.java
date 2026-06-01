@@ -225,8 +225,9 @@ public class GameState extends BaseAppState {
         hud.updateBatterie(batterie.getPourcentage());
 
         if (batterie.isGameOver()) {
-            System.out.println("[GameState] Batterie vide → Game Over");
-            // TODO : app.getStateManager().attach(new GameOverState());
+            app.getStateManager().detach(this);
+            app.getRootNode().detachAllChildren();
+            app.getStateManager().attach(new GameOverState());
         }
 
         // Piles au contact
