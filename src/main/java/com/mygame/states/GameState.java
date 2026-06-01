@@ -9,14 +9,22 @@ import com.jme3.input.controls.ActionListener;
 import com.jme3.input.controls.KeyTrigger;
 import com.jme3.light.AmbientLight;
 import com.jme3.light.DirectionalLight;
+import com.jme3.material.Material;
 import com.jme3.math.ColorRGBA;
+import com.jme3.math.FastMath;
 import com.jme3.math.Vector3f;
+import com.jme3.scene.Geometry;
 import com.jme3.scene.Node;
 import com.jme3.scene.Spatial;
+import com.jme3.scene.shape.Cylinder;
 import com.mygame.environment.DoorManager;
 import com.mygame.environment.Laboratory;
+import com.mygame.player.BatterieManager;
 import com.mygame.player.PlayerControl;
 import com.mygame.ui.HudManager;
+
+import java.util.ArrayList;
+import java.util.List;
 
 public class GameState extends BaseAppState {
 
@@ -25,10 +33,15 @@ public class GameState extends BaseAppState {
     private PlayerControl joueur;
     private DoorManager doorManager;
     private HudManager hud;
+    private BatterieManager batterie;
 
     private AmbientLight ambiant;
     private DirectionalLight soleil;
     private boolean visionNocturne = false;
+
+    // ── Piles ramassables (système de Lotfi) ─────────────────────────────────
+    private final Node pilesNode = new Node("Piles");
+    private final List<Vector3f> positionsPiles = new ArrayList<>();
 
     private final ActionListener actionListener = this::onAction;
 
@@ -39,8 +52,7 @@ public class GameState extends BaseAppState {
         bullet = new BulletAppState();
         app.getStateManager().attach(bullet);
 
-        // Lumières — ambient fort pour simuler un éclairage baked "fullbright"
-        // (PBR Lighting respecte les couleurs réelles de chaque matériau)
+        // Lumières — ambient fort pour un éclairage baked "fullbright"
         ambiant = new AmbientLight();
         ambiant.setColor(ColorRGBA.White.mult(4.0f));
         app.getRootNode().addLight(ambiant);
@@ -56,12 +68,21 @@ public class GameState extends BaseAppState {
         // Mains du joueur
         Node nodeCamera = new Node("nodeCamera");
         app.getRootNode().attachChild(nodeCamera);
-        Spatial hands = app.getAssetManager().loadModel("Models/player/arms_throwing.j3o");
+        Spatial hands = app.getAssetManager().loadModel("Models/player/arms_throwing.glb");
         hands.rotate(0.2f, 0, 0);
         hands.setLocalScale(0.04f);
         nodeCamera.attachChild(hands);
 
         joueur = new PlayerControl(bullet, app.getCamera(), nodeCamera, hands);
+
+        // Batterie
+        batterie = new BatterieManager();
+
+        // Piles à ramasser (positions dans le labo — à ajuster)
+        app.getRootNode().attachChild(pilesNode);
+        placerPile(new Vector3f(2f,  1f,  5f));
+        placerPile(new Vector3f(-2f, 1f, 20f));
+        placerPile(new Vector3f(1f,  1f, 36f));
 
         // HUD
         hud = new HudManager(
@@ -79,6 +100,22 @@ public class GameState extends BaseAppState {
 
         enregistrerTouches();
     }
+
+    // ─────────────────────────────────────────────────────────────────────────
+
+    private void placerPile(Vector3f pos) {
+        Cylinder shape = new Cylinder(20, 20, 0.15f, 0.4f, true);
+        Geometry pile = new Geometry("Pile_" + pilesNode.getQuantity(), shape);
+        Material mat = new Material(app.getAssetManager(), "Common/MatDefs/Misc/Unshaded.j3md");
+        mat.setColor("Color", ColorRGBA.Yellow);
+        pile.setMaterial(mat);
+        pile.rotate(FastMath.HALF_PI, 0, 0);
+        pile.setLocalTranslation(pos);
+        pilesNode.attachChild(pile);
+        positionsPiles.add(pos.clone());
+    }
+
+    // ─────────────────────────────────────────────────────────────────────────
 
     private void enregistrerTouches() {
         app.getInputManager().addMapping("Avancer",    new KeyTrigger(KeyInput.KEY_W));
@@ -102,7 +139,7 @@ public class GameState extends BaseAppState {
             case "Reculer"    -> joueur.setBackward(isPressed);
             case "Gauche"     -> joueur.setLeft(isPressed);
             case "Droite"     -> joueur.setRight(isPressed);
-            case "Sprint"     -> joueur.setSprint(isPressed);
+            case "Sprint"     -> { joueur.setSprint(isPressed); batterie.setSprint(isPressed); }
             case "Accroupir"  -> { if (isPressed) joueur.setCrouch(!joueur.isSprint()); }
             case "VisionNuit" -> { if (isPressed) basculerVisionNuit(); }
             case "Interagir"  -> { if (isPressed) doorManager.interagir(); }
@@ -115,14 +152,42 @@ public class GameState extends BaseAppState {
         if (!isEnabled()) return;
         joueur.update(tpf);
 
-        // Détection porte proche → prompt HUD
         Vector3f posJoueur = joueur.getCharacterControl().getPhysicsLocation();
+
+        // ── Batterie ─────────────────────────────────────────────────────────
+        batterie.update(tpf);
+        hud.updateBatterie(batterie.getPourcentage());
+
+        if (batterie.estVide()) {
+            // TODO : déclencher GameOverState
+            System.out.println("[GameState] Batterie vide → Game Over");
+        }
+
+        // ── Ramassage de piles ────────────────────────────────────────────────
+        for (int i = pilesNode.getQuantity() - 1; i >= 0; i--) {
+            Spatial pile = pilesNode.getChild(i);
+            if (posJoueur.distanceSquared(pile.getWorldTranslation()) < 2f * 2f) {
+                batterie.rechargerAFond();
+                pile.removeFromParent();
+                hud.setMessageInteraction("Pile ramassée ! Batterie rechargée !");
+                System.out.println("[GameState] Pile ramassée.");
+            }
+        }
+
+        // ── Portes ───────────────────────────────────────────────────────────
         boolean porteProche = doorManager.update(posJoueur);
-        hud.setMessageInteraction(porteProche ? "[E] Ouvrir la porte" : "");
+        if (porteProche) hud.setMessageInteraction("[E] Ouvrir la porte");
+        else if (pilesNode.getQuantity() == 0 || posJoueur.distanceSquared(
+                pilesNode.getQuantity() > 0
+                    ? pilesNode.getChild(0).getWorldTranslation()
+                    : posJoueur) > 4f) {
+            hud.setMessageInteraction("");
+        }
     }
 
     private void basculerVisionNuit() {
         visionNocturne = !visionNocturne;
+        batterie.setVisionNocturne(visionNocturne);
         if (visionNocturne) {
             ambiant.setColor(new ColorRGBA(0f, 1f, 0f, 1f));
             app.getViewPort().setBackgroundColor(new ColorRGBA(0f, 0.05f, 0f, 1f));

@@ -23,17 +23,31 @@ public class BatterieManager {
         pourcentage = Math.max(0f, pourcentage - drain * tpf);
     }
 
-    /** Recharge depuis une station. */
+    /** Recharge depuis une station (instantané +30%). */
     public void recharger() {
         pourcentage = Math.min(100f, pourcentage + CHARGE_STATION);
     }
 
-    public boolean estVide() {
-        return pourcentage <= 0f;
+    /** Recharge complète (ramasse une pile). */
+    public void rechargerAFond() {
+        pourcentage = 100f;
     }
 
-    public float getPourcentage() {
-        return pourcentage;
+    /** Recharge progressive depuis une station (appelé chaque frame). */
+    public void rechargerProgressif(float tpf) {
+        pourcentage = Math.min(100f, pourcentage + 15f * tpf); // +15%/s
+    }
+
+    public boolean estVide()    { return pourcentage <= 0f; }
+
+    /** Alias pour compatibilité (isGameOver). */
+    public boolean isGameOver() { return estVide(); }
+
+    public float getPourcentage()   { return pourcentage; }
+
+    /** Temps restant estimé en secondes (basé sur le drain de base). */
+    public float getTempsRestant() {
+        return pourcentage / DRAIN_BASE;
     }
 
     public void setSprint(boolean sprint) {
