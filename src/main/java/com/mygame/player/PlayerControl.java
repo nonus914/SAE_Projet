@@ -99,7 +99,8 @@ public class PlayerControl {
     public void setSprint(boolean v)   { sprint = v; }
     public void setCrouch(boolean v)   { crouch = v; }
 
-    public boolean isSprint() { return sprint; }
+    public boolean isSprint()  { return sprint; }
+    public boolean isCrouch()  { return crouch; }
 
     /** Fait sauter le joueur si il est au sol. */
     public void sauter() {
