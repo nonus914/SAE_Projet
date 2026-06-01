@@ -8,24 +8,26 @@ import com.jme3.font.BitmapText;
 import com.jme3.input.KeyInput;
 import com.jme3.input.controls.ActionListener;
 import com.jme3.input.controls.KeyTrigger;
+import com.jme3.material.Material;
+import com.jme3.math.ColorRGBA;
+import com.jme3.scene.Geometry;
 import com.jme3.scene.Node;
-import com.mygame.ui.CyberUI;
+import com.jme3.scene.shape.Quad;
+import com.jme3.texture.Texture;
 
 /**
- * Écran de victoire — style cyber/néon (design Aymen).
- *
- *  STATUS: MISSION COMPLETE
- *  ╔═══════════ VICTOIRE ════════════╗
- *  ║  Bien joué !!!                  ║
- *  ╚═════════════════════════════════╝
- *  ▶ RECOMMENCER  [R]
- *  ▶ QUITTER      [ECHAP]
+ * Ecran Victoire - style cyber/neon (design Aymen).
+ * STATUS: MISSION COMPLETE  /  VICTOIRE  /  Bien joue!
  */
 public class WinState extends BaseAppState {
 
     private SimpleApplication app;
     private Node guiNode;
     private Node uiNode;
+
+    private static final ColorRGBA CYN   = new ColorRGBA(0f, 1f, 1f, 1f);
+    private static final ColorRGBA CYN_D = new ColorRGBA(0f, 0.38f, 0.38f, 0.9f);
+    private static final ColorRGBA BLANC = new ColorRGBA(0.9f, 0.9f, 0.9f, 1f);
 
     private final ActionListener actionListener = (name, isPressed, tpf) -> {
         if (!isPressed) return;
@@ -41,79 +43,126 @@ public class WinState extends BaseAppState {
 
         int W = app.getCamera().getWidth();
         int H = app.getCamera().getHeight();
-
         BitmapFont font = app.getAssetManager().loadFont("Interface/Fonts/Default.fnt");
 
         uiNode = new Node("WinUI");
+        uiNode.attachChild(fondEcran(W, H, "Interface/bg/victoire.png"));
 
-        // ── Fond victoire ─────────────────────────────────────────────────────
-        uiNode.attachChild(CyberUI.fond(app.getAssetManager(), W, H,
-                "Interface/bg/victoire.png"));
+        float bw = Math.min(830f, W - 100f);
+        float bx = (W - bw) / 2f;
+        float headerH = 200f;
+        float headerY = H * 0.52f;
 
-        // ── Cadre néon ────────────────────────────────────────────────────────
-        float fw = 640f, fh = 200f;
-        float fx = (W - fw) / 2f;
-        float fy = H * 0.52f;
-        uiNode.attachChild(CyberUI.cadreNeon(app.getAssetManager(), fx, fy, fw, fh));
+        // Cadre header
+        uiNode.attachChild(boite(bx, headerY, bw, headerH,
+                new ColorRGBA(0.05f, 0.07f, 0.09f, 0.88f)));
 
-        // ── Textes dans le cadre ──────────────────────────────────────────────
-        BitmapText status = CyberUI.texte(font, "STATUS: MISSION COMPLETE", 0.85f, CyberUI.CYAN);
-        CyberUI.centrerX(status, W, fy + fh - 30, 3f);
+        BitmapText status = txt(font, "STATUS: MISSION COMPLETE", 0.9f, CYN);
+        centrer(status, W, headerY + headerH - 28, 3f);
         uiNode.attachChild(status);
 
-        BitmapText titre = CyberUI.texte(font, "VICTOIRE", 3.5f, CyberUI.CYAN);
-        CyberUI.centrerX(titre, W, fy + fh - 95, 3f);
+        BitmapText titre = txt(font, "VICTOIRE", 3.5f, CYN);
+        centrer(titre, W, headerY + headerH - 95, 3f);
         uiNode.attachChild(titre);
 
-        // ── Sous-texte ────────────────────────────────────────────────────────
-        BitmapText sub = CyberUI.texte(font, "Bien joué !!!", 1.5f, CyberUI.BLANC);
-        CyberUI.centrerX(sub, W, fy - 35, 3f);
+        BitmapText sub = txt(font, "Bien joue !!!", 1.5f, BLANC);
+        centrer(sub, W, headerY - 32, 3f);
         uiNode.attachChild(sub);
 
-        // ── Boutons ───────────────────────────────────────────────────────────
-        BitmapText btnRetry = CyberUI.texte(font, "▶  RECOMMENCER   [R]", 1.3f, CyberUI.CYAN);
-        CyberUI.centrerX(btnRetry, W, fy - 85, 3f);
-        uiNode.attachChild(btnRetry);
+        // Boutons
+        float btnH = 60f, gap = 12f;
+        float btnY1 = headerY - gap - btnH - 50f;
+        float btnY2 = btnY1 - gap - btnH;
 
-        BitmapText btnMenu = CyberUI.texte(font, "▶  MENU   [M]", 1.1f, CyberUI.BLANC);
-        CyberUI.centrerX(btnMenu, W, fy - 125, 3f);
-        uiNode.attachChild(btnMenu);
-
-        BitmapText btnQuit = CyberUI.texte(font, "▶  QUITTER   [ECHAP]", 1.1f, CyberUI.GRIS);
-        CyberUI.centrerX(btnQuit, W, fy - 160, 3f);
-        uiNode.attachChild(btnQuit);
+        uiNode.attachChild(boutonBoite(font, "RECOMMENCER  [R]",    bx, btnY1, bw, btnH, CYN));
+        uiNode.attachChild(boutonBoite(font, "QUITTER  [ECHAP]",    bx, btnY2, bw, btnH, CYN));
 
         guiNode.attachChild(uiNode);
 
-        // ── Touches ───────────────────────────────────────────────────────────
         app.getInputManager().addMapping("WinRejouer", new KeyTrigger(KeyInput.KEY_R));
         app.getInputManager().addMapping("WinMenu",    new KeyTrigger(KeyInput.KEY_M));
         app.getInputManager().addMapping("WinQuitter", new KeyTrigger(KeyInput.KEY_ESCAPE));
-        app.getInputManager().addListener(actionListener, "WinRejouer", "WinMenu", "WinQuitter");
+        app.getInputManager().addListener(actionListener,"WinRejouer","WinMenu","WinQuitter");
 
         app.getInputManager().setCursorVisible(true);
-        app.getViewPort().setBackgroundColor(
-            new com.jme3.math.ColorRGBA(0.03f, 0.03f, 0.05f, 1f));
+        app.getViewPort().setBackgroundColor(new ColorRGBA(0.03f, 0.03f, 0.05f, 1f));
     }
 
-    private void rejouer() {
-        app.getStateManager().detach(this);
-        app.getStateManager().attach(new GameState());
+    // ── Helpers (identiques aux autres etats) ─────────────────────────────────
+
+    private Node boutonBoite(BitmapFont font, String label,
+                             float x, float y, float w, float h, ColorRGBA couleur) {
+        Node n = new Node("Btn");
+        n.attachChild(boite(x, y, w, h, new ColorRGBA(0.07f, 0.07f, 0.09f, 0.92f)));
+        BitmapText t = txt(font, label, 1.3f, couleur);
+        t.setLocalTranslation(x + w / 2f - t.getLineWidth() / 2f,
+                              y + h / 2f + t.getSize() * 0.4f, 3f);
+        n.attachChild(t);
+        return n;
     }
 
-    private void retourMenu() {
-        app.getStateManager().detach(this);
-        app.getStateManager().attach(new MenuState());
+    private Node boite(float x, float y, float w, float h, ColorRGBA fond) {
+        Node n = new Node("box");
+        n.attachChild(geo(x, y, w, h, 0.5f, fond, true));
+        n.attachChild(barre(x,         y + h - 1, w, 1));
+        n.attachChild(barre(x,         y,         w, 1));
+        n.attachChild(barre(x,         y,         1, h));
+        n.attachChild(barre(x + w - 1, y,         1, h));
+        return n;
     }
+
+    private Geometry barre(float x, float y, float w, float h) {
+        return geo(x, y, w, h, 2f, CYN, false);
+    }
+
+    private Geometry geo(float x, float y, float w, float h,
+                         float z, ColorRGBA color, boolean alpha) {
+        Geometry g = new Geometry("g", new Quad(w, h));
+        Material mat = new Material(app.getAssetManager(),
+                "Common/MatDefs/Misc/Unshaded.j3md");
+        mat.setColor("Color", color);
+        if (alpha) mat.getAdditionalRenderState()
+                .setBlendMode(com.jme3.material.RenderState.BlendMode.Alpha);
+        g.setMaterial(mat);
+        if (alpha) g.setQueueBucket(
+                com.jme3.renderer.queue.RenderQueue.Bucket.Transparent);
+        g.setLocalTranslation(x, y, z);
+        return g;
+    }
+
+    private Geometry fondEcran(int w, int h, String path) {
+        Geometry bg = new Geometry("BG", new Quad(w, h));
+        Material mat = new Material(app.getAssetManager(),
+                "Common/MatDefs/Misc/Unshaded.j3md");
+        try { mat.setTexture("ColorMap",
+                app.getAssetManager().loadTexture(path));
+        } catch (Exception e) {
+            mat.setColor("Color", new ColorRGBA(0.04f, 0.04f, 0.06f, 1f));
+        }
+        bg.setMaterial(mat);
+        bg.setLocalTranslation(0, 0, -1);
+        return bg;
+    }
+
+    private static BitmapText txt(BitmapFont f, String s, float scale, ColorRGBA c) {
+        BitmapText t = new BitmapText(f, false);
+        t.setSize(f.getCharSet().getRenderedSize() * scale);
+        t.setColor(c); t.setText(s); return t;
+    }
+
+    private static void centrer(BitmapText t, int W, float y, float z) {
+        t.setLocalTranslation(W / 2f - t.getLineWidth() / 2f, y, z);
+    }
+
+    private void rejouer()    { app.getStateManager().detach(this); app.getStateManager().attach(new GameState()); }
+    private void retourMenu() { app.getStateManager().detach(this); app.getStateManager().attach(new MenuState()); }
 
     @Override
     protected void cleanup(Application application) {
         guiNode.detachChild(uiNode);
         app.getInputManager().removeListener(actionListener);
-        for (String m : new String[]{"WinRejouer","WinMenu","WinQuitter"}) {
-            if (app.getInputManager().hasMapping(m))
-                app.getInputManager().deleteMapping(m);
-        }
+        for (String m : new String[]{"WinRejouer","WinMenu","WinQuitter"})
+            if (app.getInputManager().hasMapping(m)) app.getInputManager().deleteMapping(m);
     }
 
     @Override protected void onEnable()  {}
