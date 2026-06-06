@@ -54,8 +54,9 @@ public class GameState extends BaseAppState {
     private static final String CODE_E3       = "2702";
     private static final float  ROOM3_Z_MIN   = 26f;
     private static final float  ROOM3_Z_MAX   = 56f; // sombre jusqu'a la sortie
-    private boolean enigme3Resolue = false;
-    private String  codeEntree     = "";
+    private boolean enigme3Resolue    = false;
+    private String  codeEntree        = "";
+    private float   digiCloseTimer    = -1f; // >0 = compte a rebours avant fermeture
 
     private static final String CHARADE =
         "=== CHARADE — PORTE SALLE 4 ===\n" +
@@ -262,12 +263,7 @@ public class GameState extends BaseAppState {
             enigme3Resolue = true;
             doorManager.deverrouiller("003");
             hud.setCharade("");
-            // Fermer apres 1 seconde (approximation via flag)
-            new Thread(() -> {
-                try { Thread.sleep(800); } catch (InterruptedException ignored) {}
-                hud.fermerDigicode();
-                codeEntree = "";
-            }).start();
+            digiCloseTimer = 1.2f; // ferme dans 1.2s (gere dans update)
         } else {
             hud.setFeedbackDigicode("CODE INCORRECT !", ColorRGBA.Red);
             codeEntree = "";
@@ -328,6 +324,23 @@ public class GameState extends BaseAppState {
                 pile.removeFromParent();
                 hud.setMessageInteraction("Pile ramassée ! Batterie rechargée !");
             }
+        }
+
+        // ── Timer fermeture digicode (JME-safe, pas de Thread) ───────────────
+        if (digiCloseTimer > 0) {
+            digiCloseTimer -= tpf;
+            if (digiCloseTimer <= 0) {
+                hud.fermerDigicode();
+                codeEntree = "";
+                digiCloseTimer = -1f;
+            }
+        }
+
+        // ── Boost escaliers room 3 (z≈38-41) ─────────────────────────────────
+        // Si le joueur est pres des escaliers et trop bas, on le teleporte
+        if (pos.z > 37f && pos.z < 42f && pos.y < 1.5f) {
+            joueur.getCharacterControl().setPhysicsLocation(
+                new Vector3f(pos.x, 2.5f, pos.z));
         }
 
         // ── Enigme 3 — salle sombre ───────────────────────────────────────────

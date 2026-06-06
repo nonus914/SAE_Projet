@@ -191,47 +191,47 @@ public class HudManager {
     // ── Construction panneau Digicode ─────────────────────────────────────────
 
     private void construireDigicode() {
-        float dw = 460f, dh = 220f;
+        // Le node est positionne au coin bas-gauche du panneau
+        float dw = 500f, dh = 240f;
         float dx = (largeurEcran - dw) / 2f;
         float dy = (hauteurEcran - dh) / 2f;
 
         panneauDigicode = new Node("Digicode");
+        panneauDigicode.setLocalTranslation(dx, dy, 0); // centrer le node
+
+        // Coordonnees RELATIVES au node (0,0 = bas-gauche du panneau)
 
         // Fond sombre
-        Geometry fond = quad(dx, dy, dw, dh, 0.5f,
+        Geometry fond = quad(0, 0, dw, dh, 0.5f,
                 new ColorRGBA(0.06f, 0.06f, 0.08f, 0.95f), true);
         panneauDigicode.attachChild(fond);
 
         // Bordure cyan
-        panneauDigicode.attachChild(barre(dx,          dy + dh - 2, dw, 2));
-        panneauDigicode.attachChild(barre(dx,          dy,          dw, 2));
-        panneauDigicode.attachChild(barre(dx,          dy,          2,  dh));
-        panneauDigicode.attachChild(barre(dx + dw - 2, dy,          2,  dh));
+        panneauDigicode.attachChild(barre(0,      dh - 2, dw, 2)); // haut
+        panneauDigicode.attachChild(barre(0,      0,      dw, 2)); // bas
+        panneauDigicode.attachChild(barre(0,      0,      2,  dh)); // gauche
+        panneauDigicode.attachChild(barre(dw - 2, 0,      2,  dh)); // droite
 
-        // Titre
-        BitmapText titre = txt("DIGICODE - ENTREZ LE CODE", 1.2f,
+        // Titre (fixe, centre a la main)
+        BitmapText titre = txt("DIGICODE  -  ENTREZ LE CODE", 1.1f,
                 new ColorRGBA(0f, 1f, 1f, 1f));
-        titre.setLocalTranslation(dx + dw / 2f - titre.getLineWidth() / 2f,
-                                  dy + dh - 28, 2f);
+        titre.setLocalTranslation(dw / 2f - 120, dh - 28, 2f);
         panneauDigicode.attachChild(titre);
 
-        // Saisie (4 cases : "_ _ _ _")
-        texteDigiSaisie = txt("_  _  _  _", 3.0f, new ColorRGBA(0f, 1f, 1f, 1f));
-        texteDigiSaisie.setLocalTranslation(
-                dx + dw / 2f - texteDigiSaisie.getLineWidth() / 2f,
-                dy + dh - 110, 2f);
+        // Saisie — position fixe, centree (pas besoin de getLineWidth ici)
+        texteDigiSaisie = txt("_ _ _ _", 2.5f, new ColorRGBA(0f, 1f, 1f, 1f));
+        texteDigiSaisie.setLocalTranslation(dw / 2f - 80, dh - 110, 2f);
         panneauDigicode.attachChild(texteDigiSaisie);
 
-        // Feedback (ERREUR / ACCEPTE)
-        texteDigiFeedback = txt("", 1.1f, ColorRGBA.White);
-        texteDigiFeedback.setLocalTranslation(dx + dw / 2f - 80, dy + 60, 2f);
+        // Feedback
+        texteDigiFeedback = txt("", 1.2f, ColorRGBA.White);
+        texteDigiFeedback.setLocalTranslation(dw / 2f - 90, 65, 2f);
         panneauDigicode.attachChild(texteDigiFeedback);
 
-        // Hints touches
-        BitmapText hint = txt("Touches 0-9  |  RETOUR pour effacer  |  ENTREE pour valider",
+        // Hints
+        BitmapText hint = txt("0-9 saisir  |  RETOUR effacer  |  ENTREE valider",
                 0.85f, new ColorRGBA(0.6f, 0.6f, 0.6f, 1f));
-        hint.setLocalTranslation(dx + dw / 2f - hint.getLineWidth() / 2f,
-                                  dy + 28, 2f);
+        hint.setLocalTranslation(dw / 2f - 160, 28, 2f);
         panneauDigicode.attachChild(hint);
     }
 
@@ -295,20 +295,14 @@ public class HudManager {
 
     public boolean isDigicodeOuvert() { return digicodeOuvert; }
 
-    /** Met a jour l'affichage de la saisie (ex: "27" → "2  7  _  _"). */
+    /** Met a jour l'affichage (ex: "27" -> "2 7 _ _"). */
     public void updateDigicode(String saisie) {
         StringBuilder sb = new StringBuilder();
         for (int i = 0; i < 4; i++) {
-            if (i > 0) sb.append("  ");
+            if (i > 0) sb.append("   "); // espacement entre cases
             sb.append(i < saisie.length() ? saisie.charAt(i) : '_');
         }
         texteDigiSaisie.setText(sb.toString());
-        // Re-centrer
-        float dx = (largeurEcran - 460f) / 2f;
-        float dy = (hauteurEcran - 220f) / 2f;
-        texteDigiSaisie.setLocalTranslation(
-                dx + 460f / 2f - texteDigiSaisie.getLineWidth() / 2f,
-                dy + 220f - 110, 2f);
     }
 
     public void setFeedbackDigicode(String msg, ColorRGBA couleur) {
