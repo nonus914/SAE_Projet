@@ -50,6 +50,25 @@ public class GameState extends BaseAppState {
     // ── Objets ramassables (raycasting E key — système Noah) ─────────────────
     private final Node objetsNode = new Node("Objets");
 
+    // ── Enigme 3 — Digicode ───────────────────────────────────────────────────
+    private static final String CODE_E3       = "2702";
+    private static final float  ROOM3_Z_MIN   = 26f;
+    private static final float  ROOM3_Z_MAX   = 56f; // sombre jusqu'a la sortie
+    private boolean enigme3Resolue = false;
+    private String  codeEntree     = "";
+
+    private static final String CHARADE =
+        "=== CHARADE — PORTE SALLE 4 ===\n" +
+        "\n" +
+        "Mon premier est le numero du Sujet.\n" +
+        "Mon second est le niveau de batterie\n" +
+        "  qui provoque le Game Over.\n" +
+        "Mon troisieme est le numero de la salle.\n" +
+        "\n" +
+        "Mon tout est le code du Digicode.\n" +
+        "\n" +
+        "[Approchez la porte et appuyez sur E]";
+
     private final ActionListener actionListener = this::onAction;
 
     // ─────────────────────────────────────────────────────────────────────────
@@ -112,6 +131,9 @@ public class GameState extends BaseAppState {
         app.getFlyByCamera().setRotationSpeed(2f);
         app.getInputManager().setCursorVisible(false);
 
+        // Verrouiller la porte 003 (necessite le code Digicode)
+        doorManager.verrouiller("003");
+
         enregistrerTouches();
     }
 
@@ -158,12 +180,54 @@ public class GameState extends BaseAppState {
         app.getInputManager().addMapping("Sauter",          new KeyTrigger(KeyInput.KEY_SPACE));
         app.getInputManager().addMapping("VoirInventaire",  new KeyTrigger(KeyInput.KEY_I));
 
+        // Touches chiffres pour Digicode
+        int[] numKeys = {KeyInput.KEY_0,KeyInput.KEY_1,KeyInput.KEY_2,KeyInput.KEY_3,
+                         KeyInput.KEY_4,KeyInput.KEY_5,KeyInput.KEY_6,KeyInput.KEY_7,
+                         KeyInput.KEY_8,KeyInput.KEY_9};
+        for (int i = 0; i <= 9; i++) {
+            app.getInputManager().addMapping("Digi" + i, new KeyTrigger(numKeys[i]));
+        }
+        app.getInputManager().addMapping("DigiEffacer", new KeyTrigger(KeyInput.KEY_BACK));
+        app.getInputManager().addMapping("DigiValider",  new KeyTrigger(KeyInput.KEY_RETURN));
+        app.getInputManager().addMapping("DigiFermer",   new KeyTrigger(KeyInput.KEY_ESCAPE));
+
         app.getInputManager().addListener(actionListener,
                 "Avancer","Reculer","Gauche","Droite",
-                "Sprint","Accroupir","VisionNuit","Interagir","Sauter","VoirInventaire");
+                "Sprint","Accroupir","VisionNuit","Interagir","Sauter","VoirInventaire",
+                "Digi0","Digi1","Digi2","Digi3","Digi4",
+                "Digi5","Digi6","Digi7","Digi8","Digi9",
+                "DigiEffacer","DigiValider","DigiFermer");
     }
 
     private void onAction(String name, boolean isPressed, float tpf) {
+        // Digicode intercept — si le panneau est ouvert, bloquer les autres actions
+        if (hud.isDigicodeOuvert()) {
+            if (!isPressed) return;
+            if (name.startsWith("Digi")) {
+                if (name.equals("DigiEffacer")) {
+                    if (!codeEntree.isEmpty()) {
+                        codeEntree = codeEntree.substring(0, codeEntree.length() - 1);
+                        hud.updateDigicode(codeEntree);
+                        hud.setFeedbackDigicode("", ColorRGBA.White);
+                    }
+                } else if (name.equals("DigiValider")) {
+                    validerCodeDigicode();
+                } else if (name.equals("DigiFermer")) {
+                    hud.fermerDigicode();
+                    codeEntree = "";
+                } else {
+                    // Chiffre 0-9
+                    String chiffre = name.replace("Digi", "");
+                    if (codeEntree.length() < 4) {
+                        codeEntree += chiffre;
+                        hud.updateDigicode(codeEntree);
+                        if (codeEntree.length() == 4) validerCodeDigicode();
+                    }
+                }
+            }
+            return; // bloquer tout le reste
+        }
+
         switch (name) {
             case "Avancer"        -> joueur.setForward(isPressed);
             case "Reculer"        -> joueur.setBackward(isPressed);
@@ -176,12 +240,38 @@ public class GameState extends BaseAppState {
             case "VoirInventaire" -> { if (isPressed) hud.toggleInventaire(inventaire.getObjets()); }
             case "Interagir"      -> {
                 if (isPressed) {
-                    // 1. Essayer d'ouvrir une porte
-                    boolean portOuverte = doorManager.interagir();
-                    // 2. Sinon essayer de ramasser un objet (raycasting — système Noah)
-                    if (!portOuverte) tenterDeRamasser();
+                    // 1. Porte verrouillee (enigme 3) → ouvrir digicode
+                    if (doorManager.isPorteProcheVerrouillee()) {
+                        codeEntree = "";
+                        hud.ouvrirDigicode();
+                        hud.updateDigicode("");
+                    } else {
+                        // 2. Ouvrir porte normale
+                        boolean portOuverte = doorManager.interagir();
+                        // 3. Sinon ramasser objet
+                        if (!portOuverte) tenterDeRamasser();
+                    }
                 }
             }
+        }
+    }
+
+    private void validerCodeDigicode() {
+        if (codeEntree.equals(CODE_E3)) {
+            hud.setFeedbackDigicode("CODE ACCEPTE !", ColorRGBA.Green);
+            enigme3Resolue = true;
+            doorManager.deverrouiller("003");
+            hud.setCharade("");
+            // Fermer apres 1 seconde (approximation via flag)
+            new Thread(() -> {
+                try { Thread.sleep(800); } catch (InterruptedException ignored) {}
+                hud.fermerDigicode();
+                codeEntree = "";
+            }).start();
+        } else {
+            hud.setFeedbackDigicode("CODE INCORRECT !", ColorRGBA.Red);
+            codeEntree = "";
+            hud.updateDigicode("");
         }
     }
 
@@ -240,10 +330,31 @@ public class GameState extends BaseAppState {
             }
         }
 
+        // ── Enigme 3 — salle sombre ───────────────────────────────────────────
+        boolean inSalleSombre = !enigme3Resolue && pos.z > ROOM3_Z_MIN && pos.z < ROOM3_Z_MAX;
+        if (inSalleSombre) {
+            if (visionNocturne) {
+                hud.setCharade(CHARADE);
+            } else {
+                hud.setCharade("");
+                // Presque noir sans vision nocturne
+                ambiant.setColor(new ColorRGBA(0.03f, 0.03f, 0.03f, 1f));
+                hud.setMessageInteraction("[N] Activer la vision nocturne");
+            }
+        } else if (!inSalleSombre && !enigme3Resolue && pos.z <= ROOM3_Z_MIN) {
+            hud.setCharade("");
+            if (!visionNocturne) ambiant.setColor(ColorRGBA.White.mult(8.0f));
+        } else if (enigme3Resolue) {
+            hud.setCharade("");
+        }
+
         // Prompt "Regarder objet → [E] Ramasser" (raycasting passif)
         boolean porteProche = doorManager.update(pos);
         if (porteProche) {
-            hud.setMessageInteraction("[E] Ouvrir la porte");
+            if (doorManager.isPorteProcheVerrouillee())
+                hud.setMessageInteraction("[E] Entrer le code Digicode");
+            else
+                hud.setMessageInteraction("[E] Ouvrir la porte");
         } else {
             // Vérifie si le joueur vise un objet ramassable
             CollisionResults r = new CollisionResults();
@@ -286,7 +397,10 @@ public class GameState extends BaseAppState {
         app.getInputManager().removeListener(actionListener);
         for (String m : new String[]{
             "Avancer","Reculer","Gauche","Droite",
-            "Sprint","Accroupir","VisionNuit","Interagir","Sauter","VoirInventaire"
+            "Sprint","Accroupir","VisionNuit","Interagir","Sauter","VoirInventaire",
+            "Digi0","Digi1","Digi2","Digi3","Digi4",
+            "Digi5","Digi6","Digi7","Digi8","Digi9",
+            "DigiEffacer","DigiValider","DigiFermer"
         }) {
             if (app.getInputManager().hasMapping(m))
                 app.getInputManager().deleteMapping(m);

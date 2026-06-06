@@ -150,8 +150,37 @@ public class DoorManager {
         return groupeProche != null;
     }
 
+    /** Verrouille une porte — ne s'ouvre qu'avec deverrouiller(). */
+    public void verrouiller(String numero) {
+        for (DoorGroup g : groupes) {
+            if (g.numero.equals(numero)) { g.verrouillee = true; return; }
+        }
+    }
+
+    /** Deverrouille une porte (code correct) et l'ouvre si joueur est proche. */
+    public void deverrouiller(String numero) {
+        for (DoorGroup g : groupes) {
+            if (g.numero.equals(numero)) {
+                g.verrouillee = false;
+                if (!g.ouverte) g.ouvrir(bullet);
+                return;
+            }
+        }
+    }
+
+    /** @return true si la porte proche est verrouillee */
+    public boolean isPorteProcheVerrouillee() {
+        return groupeProche != null && groupeProche.verrouillee;
+    }
+
+    /** @return numero de la porte proche, null si aucune */
+    public String getNumeroPorteProche() {
+        return groupeProche != null ? groupeProche.numero : null;
+    }
+
     public boolean interagir() {
         if (groupeProche == null) return false;
+        if (groupeProche.verrouillee) return false; // signale porte verrouillee
         System.out.println("[DoorManager] Ouverture Door_" + groupeProche.numero);
         groupeProche.ouvrir(bullet);
         groupeProche = null;
@@ -228,7 +257,8 @@ public class DoorManager {
         final Spatial stripe;
         RigidBodyControl rbc;
         Node             viewBlocker;
-        boolean          ouverte = false;
+        boolean          ouverte     = false;
+        boolean          verrouillee = false;
 
         DoorGroup(String numero, Spatial panel, Spatial stripe) {
             this.numero = numero;

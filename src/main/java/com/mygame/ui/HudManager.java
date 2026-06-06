@@ -49,6 +49,15 @@ public class HudManager {
     private BitmapText texteListeInventaire;
     private boolean    inventaireOuvert = false;
 
+    // Panneau Digicode (enigme 3)
+    private Node       panneauDigicode;
+    private BitmapText texteDigiSaisie;    // affiche "_ _ _ _" ou "2 7 _ _"
+    private BitmapText texteDigiFeedback; // ERREUR / CODE ACCEPTE
+    private boolean    digicodeOuvert = false;
+
+    // Overlay charade (vision nocturne room 3)
+    private BitmapText texteCharade;
+
     // ─────────────────────────────────────────────────────────────────────────
 
     public HudManager(AssetManager am, Node guiNode, int largeur, int hauteur) {
@@ -166,6 +175,64 @@ public class HudManager {
         float posX = (largeurEcran - PANEL_W) / 2f;
         float posY = (hauteurEcran - PANEL_H) / 2f;
         panneauInventaire.setLocalTranslation(posX, posY, 0);
+
+        // ── Panneau Digicode ──────────────────────────────────────────────────
+        construireDigicode();
+
+        // ── Charade overlay ───────────────────────────────────────────────────
+        texteCharade = new BitmapText(font, false);
+        texteCharade.setSize(font.getCharSet().getRenderedSize() * 1.05f);
+        texteCharade.setColor(new ColorRGBA(0f, 1f, 0f, 1f)); // vert vision nuit
+        texteCharade.setText("");
+        texteCharade.setLocalTranslation(20, hauteurEcran * 0.82f, 3f);
+        guiNode.attachChild(texteCharade);
+    }
+
+    // ── Construction panneau Digicode ─────────────────────────────────────────
+
+    private void construireDigicode() {
+        float dw = 460f, dh = 220f;
+        float dx = (largeurEcran - dw) / 2f;
+        float dy = (hauteurEcran - dh) / 2f;
+
+        panneauDigicode = new Node("Digicode");
+
+        // Fond sombre
+        Geometry fond = quad(dx, dy, dw, dh, 0.5f,
+                new ColorRGBA(0.06f, 0.06f, 0.08f, 0.95f), true);
+        panneauDigicode.attachChild(fond);
+
+        // Bordure cyan
+        panneauDigicode.attachChild(barre(dx,          dy + dh - 2, dw, 2));
+        panneauDigicode.attachChild(barre(dx,          dy,          dw, 2));
+        panneauDigicode.attachChild(barre(dx,          dy,          2,  dh));
+        panneauDigicode.attachChild(barre(dx + dw - 2, dy,          2,  dh));
+
+        // Titre
+        BitmapText titre = txt("DIGICODE - ENTREZ LE CODE", 1.2f,
+                new ColorRGBA(0f, 1f, 1f, 1f));
+        titre.setLocalTranslation(dx + dw / 2f - titre.getLineWidth() / 2f,
+                                  dy + dh - 28, 2f);
+        panneauDigicode.attachChild(titre);
+
+        // Saisie (4 cases : "_ _ _ _")
+        texteDigiSaisie = txt("_  _  _  _", 3.0f, new ColorRGBA(0f, 1f, 1f, 1f));
+        texteDigiSaisie.setLocalTranslation(
+                dx + dw / 2f - texteDigiSaisie.getLineWidth() / 2f,
+                dy + dh - 110, 2f);
+        panneauDigicode.attachChild(texteDigiSaisie);
+
+        // Feedback (ERREUR / ACCEPTE)
+        texteDigiFeedback = txt("", 1.1f, ColorRGBA.White);
+        texteDigiFeedback.setLocalTranslation(dx + dw / 2f - 80, dy + 60, 2f);
+        panneauDigicode.attachChild(texteDigiFeedback);
+
+        // Hints touches
+        BitmapText hint = txt("Touches 0-9  |  RETOUR pour effacer  |  ENTREE pour valider",
+                0.85f, new ColorRGBA(0.6f, 0.6f, 0.6f, 1f));
+        hint.setLocalTranslation(dx + dw / 2f - hint.getLineWidth() / 2f,
+                                  dy + 28, 2f);
+        panneauDigicode.attachChild(hint);
     }
 
     /**
@@ -208,11 +275,64 @@ public class HudManager {
     // Autres
     // ─────────────────────────────────────────────────────────────────────────
 
-    public void updateInventaire(String texte) { /* gardé pour compatibilité */ }
+    // ── API Digicode ──────────────────────────────────────────────────────────
+
+    public void ouvrirDigicode() {
+        if (!digicodeOuvert) {
+            digicodeOuvert = true;
+            updateDigicode("");
+            texteDigiFeedback.setText("");
+            guiNode.attachChild(panneauDigicode);
+        }
+    }
+
+    public void fermerDigicode() {
+        if (digicodeOuvert) {
+            digicodeOuvert = false;
+            guiNode.detachChild(panneauDigicode);
+        }
+    }
+
+    public boolean isDigicodeOuvert() { return digicodeOuvert; }
+
+    /** Met a jour l'affichage de la saisie (ex: "27" → "2  7  _  _"). */
+    public void updateDigicode(String saisie) {
+        StringBuilder sb = new StringBuilder();
+        for (int i = 0; i < 4; i++) {
+            if (i > 0) sb.append("  ");
+            sb.append(i < saisie.length() ? saisie.charAt(i) : '_');
+        }
+        texteDigiSaisie.setText(sb.toString());
+        // Re-centrer
+        float dx = (largeurEcran - 460f) / 2f;
+        float dy = (hauteurEcran - 220f) / 2f;
+        texteDigiSaisie.setLocalTranslation(
+                dx + 460f / 2f - texteDigiSaisie.getLineWidth() / 2f,
+                dy + 220f - 110, 2f);
+    }
+
+    public void setFeedbackDigicode(String msg, ColorRGBA couleur) {
+        texteDigiFeedback.setText(msg);
+        texteDigiFeedback.setColor(couleur);
+    }
+
+    // ── Charade (vision nocturne room 3) ──────────────────────────────────────
+
+    public void setCharade(String texte) {
+        texteCharade.setText(texte);
+        // Re-centrer si texte non vide
+        if (!texte.isEmpty()) {
+            texteCharade.setLocalTranslation(20, hauteurEcran * 0.80f, 3f);
+        }
+    }
+
+    // ── Autres ───────────────────────────────────────────────────────────────
+
+    public void updateInventaire(String texte) { /* compatibilite */ }
 
     public void setMessageInteraction(String msg) { texteInteraction.setText(msg); }
 
-    public void setOverlay(String msg) { /* pour dialogues futurs */ }
+    public void setOverlay(String msg) { /* non utilise */ }
 
     public void setVisionNuit(boolean actif) {
         texteVisionNuit.setText(actif ? "[VISION NUIT ON]" : "");
@@ -225,6 +345,34 @@ public class HudManager {
         guiNode.detachChild(texteVisionNuit);
         guiNode.detachChild(barreFond);
         guiNode.detachChild(barreVie);
+        guiNode.detachChild(texteCharade);
         if (inventaireOuvert) guiNode.detachChild(panneauInventaire);
+        if (digicodeOuvert)   guiNode.detachChild(panneauDigicode);
+    }
+
+    // ── Helpers internes ─────────────────────────────────────────────────────
+
+    private Geometry quad(float x, float y, float w, float h, float z,
+                          ColorRGBA col, boolean alpha) {
+        Geometry g = new Geometry("q", new Quad(w, h));
+        Material mat = new Material(am, "Common/MatDefs/Misc/Unshaded.j3md");
+        mat.setColor("Color", col);
+        if (alpha) mat.getAdditionalRenderState().setBlendMode(BlendMode.Alpha);
+        g.setMaterial(mat);
+        if (alpha) g.setQueueBucket(Bucket.Transparent);
+        g.setLocalTranslation(x, y, z);
+        return g;
+    }
+
+    private Geometry barre(float x, float y, float w, float h) {
+        return quad(x, y, w, h, 2f, new ColorRGBA(0f, 1f, 1f, 1f), false);
+    }
+
+    private BitmapText txt(String s, float scale, ColorRGBA c) {
+        BitmapText t = new BitmapText(font, false);
+        t.setSize(font.getCharSet().getRenderedSize() * scale);
+        t.setColor(c);
+        t.setText(s);
+        return t;
     }
 }

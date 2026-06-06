@@ -37,7 +37,7 @@ public class PlayerControl {
 
         CapsuleCollisionShape capsule = new CapsuleCollisionShape(0.4f, 0.9f, 1);
         // stepHeight = 0.4 m → peut monter des marches normales (~17-20 cm chacune)
-        characterControl = new CharacterControl(capsule, 0.4f);
+        characterControl = new CharacterControl(capsule, 0.6f); // 0.6m = monte les marches
         characterControl.setJumpSpeed(10f);
         characterControl.setFallSpeed(30f);
         characterControl.setGravity(30f);
