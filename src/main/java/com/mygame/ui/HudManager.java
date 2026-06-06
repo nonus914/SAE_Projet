@@ -218,9 +218,9 @@ public class HudManager {
         titre.setLocalTranslation(dw / 2f - 120, dh - 28, 2f);
         panneauDigicode.attachChild(titre);
 
-        // Saisie — position fixe, centree (pas besoin de getLineWidth ici)
-        texteDigiSaisie = txt("_ _ _ _", 2.5f, new ColorRGBA(0f, 1f, 1f, 1f));
-        texteDigiSaisie.setLocalTranslation(dw / 2f - 80, dh - 110, 2f);
+        // Saisie — utilise des points comme cases vides (pas de probleme de rendu)
+        texteDigiSaisie = txt(". . . .", 2.5f, new ColorRGBA(0f, 1f, 1f, 1f));
+        texteDigiSaisie.setLocalTranslation(dw / 2f - 80, dh - 120, 2f);
         panneauDigicode.attachChild(texteDigiSaisie);
 
         // Feedback
@@ -295,12 +295,13 @@ public class HudManager {
 
     public boolean isDigicodeOuvert() { return digicodeOuvert; }
 
-    /** Met a jour l'affichage (ex: "27" -> "2 7 _ _"). */
+    /** Met a jour l'affichage (ex: "27" -> "2  7  .  ."). */
     public void updateDigicode(String saisie) {
         StringBuilder sb = new StringBuilder();
         for (int i = 0; i < 4; i++) {
-            if (i > 0) sb.append("   "); // espacement entre cases
-            sb.append(i < saisie.length() ? saisie.charAt(i) : '_');
+            if (i > 0) sb.append("  ");
+            // Chiffre saisi = cyan clair, case vide = point gris
+            sb.append(i < saisie.length() ? saisie.charAt(i) : '.');
         }
         texteDigiSaisie.setText(sb.toString());
     }
@@ -329,7 +330,13 @@ public class HudManager {
     public void setOverlay(String msg) { /* non utilise */ }
 
     public void setVisionNuit(boolean actif) {
-        texteVisionNuit.setText(actif ? "[VISION NUIT ON]" : "");
+        if (actif) {
+            texteVisionNuit.setText(">> VISION NOCTURNE <<");
+            texteVisionNuit.setColor(new ColorRGBA(0f, 1f, 0.2f, 1f));
+            texteVisionNuit.setSize(font.getCharSet().getRenderedSize() * 1.1f);
+        } else {
+            texteVisionNuit.setText("");
+        }
     }
 
     public void detacher() {

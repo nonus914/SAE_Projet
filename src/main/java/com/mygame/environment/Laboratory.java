@@ -25,6 +25,7 @@ public class Laboratory {
 
         Spatial laboModel = am.loadModel("Models/room/labo_baked.glb");
         supprimerControles(laboModel);
+        listerEtSupprimerEscaliers(laboModel);
 
         // ── 1. Attacher au rootNode pour calculer les transforms monde ────────
         rootNode.attachChild(laboModel);
@@ -106,6 +107,47 @@ public class Laboratory {
         if (s instanceof Node) {
             for (Spatial enfant : ((Node) s).getChildren()) {
                 forcerUnshaded(enfant, am);
+            }
+        }
+    }
+
+    /**
+     * Parcourt le modele, affiche tous les noms, et supprime les escaliers.
+     * Mots-cles cherches (insensible a la casse) : stair, escal, step, marche, ramp
+     */
+    private void listerEtSupprimerEscaliers(Spatial s) {
+        String nom   = s.getName() == null ? "" : s.getName();
+        String lower = nom.toLowerCase();
+
+        // Afficher pour debug
+        System.out.println("[LAB MESH] " + nom + " (" + s.getClass().getSimpleName() + ")");
+
+        // Supprimer si c'est un escalier
+        // Supprimer escaliers ET estrades (deck slabs + colonnes + rails)
+        boolean aSupprimer = !nom.isEmpty() && (
+            lower.contains("stair")  ||
+            lower.contains("escal")  ||
+            lower.contains("step")   ||
+            lower.contains("marche") ||
+            lower.contains("ramp")   ||
+            lower.contains("slab")   ||   // plateau de l'estrade
+            lower.contains("deck")        // toute la structure deck (colonnes, rails, plateau)
+        );
+
+        if (aSupprimer) {
+            // Détacher du parent = invisible ET retiré de la physique
+            if (s.getParent() != null) {
+                s.getParent().detachChild(s);
+            } else {
+                s.setCullHint(Spatial.CullHint.Always);
+            }
+            System.out.println("[LAB] SUPPRIME : " + nom);
+            return;
+        }
+
+        if (s instanceof Node) {
+            for (Spatial enfant : new java.util.ArrayList<>(((Node) s).getChildren())) {
+                listerEtSupprimerEscaliers(enfant);
             }
         }
     }

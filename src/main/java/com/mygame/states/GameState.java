@@ -181,15 +181,27 @@ public class GameState extends BaseAppState {
         app.getInputManager().addMapping("Sauter",          new KeyTrigger(KeyInput.KEY_SPACE));
         app.getInputManager().addMapping("VoirInventaire",  new KeyTrigger(KeyInput.KEY_I));
 
-        // Touches chiffres pour Digicode
-        int[] numKeys = {KeyInput.KEY_0,KeyInput.KEY_1,KeyInput.KEY_2,KeyInput.KEY_3,
-                         KeyInput.KEY_4,KeyInput.KEY_5,KeyInput.KEY_6,KeyInput.KEY_7,
-                         KeyInput.KEY_8,KeyInput.KEY_9};
+        // Chiffres : rangee du haut + pave numerique
+        int[][] numKeys = {
+            {KeyInput.KEY_0, KeyInput.KEY_NUMPAD0},
+            {KeyInput.KEY_1, KeyInput.KEY_NUMPAD1},
+            {KeyInput.KEY_2, KeyInput.KEY_NUMPAD2},
+            {KeyInput.KEY_3, KeyInput.KEY_NUMPAD3},
+            {KeyInput.KEY_4, KeyInput.KEY_NUMPAD4},
+            {KeyInput.KEY_5, KeyInput.KEY_NUMPAD5},
+            {KeyInput.KEY_6, KeyInput.KEY_NUMPAD6},
+            {KeyInput.KEY_7, KeyInput.KEY_NUMPAD7},
+            {KeyInput.KEY_8, KeyInput.KEY_NUMPAD8},
+            {KeyInput.KEY_9, KeyInput.KEY_NUMPAD9},
+        };
         for (int i = 0; i <= 9; i++) {
-            app.getInputManager().addMapping("Digi" + i, new KeyTrigger(numKeys[i]));
+            app.getInputManager().addMapping("Digi" + i,
+                new KeyTrigger(numKeys[i][0]),
+                new KeyTrigger(numKeys[i][1]));
         }
         app.getInputManager().addMapping("DigiEffacer", new KeyTrigger(KeyInput.KEY_BACK));
-        app.getInputManager().addMapping("DigiValider",  new KeyTrigger(KeyInput.KEY_RETURN));
+        app.getInputManager().addMapping("DigiValider",  new KeyTrigger(KeyInput.KEY_RETURN),
+                                                         new KeyTrigger(KeyInput.KEY_NUMPADENTER));
         app.getInputManager().addMapping("DigiFermer",   new KeyTrigger(KeyInput.KEY_ESCAPE));
 
         app.getInputManager().addListener(actionListener,
@@ -221,6 +233,7 @@ public class GameState extends BaseAppState {
                     String chiffre = name.replace("Digi", "");
                     if (codeEntree.length() < 4) {
                         codeEntree += chiffre;
+                        System.out.println("[Digicode] Saisie : " + codeEntree);
                         hud.updateDigicode(codeEntree);
                         if (codeEntree.length() == 4) validerCodeDigicode();
                     }
@@ -246,6 +259,8 @@ public class GameState extends BaseAppState {
                         codeEntree = "";
                         hud.ouvrirDigicode();
                         hud.updateDigicode("");
+                        app.getInputManager().setCursorVisible(false); // garder cache (JME FPS)
+                        System.out.println("[Digicode] Ouvert. Tapez 2702.");
                     } else {
                         // 2. Ouvrir porte normale
                         boolean portOuverte = doorManager.interagir();
@@ -389,11 +404,16 @@ public class GameState extends BaseAppState {
     private void basculerVisionNuit() {
         visionNocturne = !visionNocturne;
         if (visionNocturne) {
-            ambiant.setColor(new ColorRGBA(0f, 1f, 0f, 1f));
-            app.getViewPort().setBackgroundColor(new ColorRGBA(0f, 0.05f, 0f, 1f));
+            // Effet neon vert intense — ambiance "lunettes vision nocturne"
+            ambiant.setColor(new ColorRGBA(0f, 3.5f, 0.3f, 1f)); // vert vif
+            soleil.setColor(new ColorRGBA(0f, 1.2f, 0.1f, 1f));  // ombre verte douce
+            soleil.setDirection(new com.jme3.math.Vector3f(-0.3f, -0.8f, -0.2f).normalizeLocal());
+            app.getViewPort().setBackgroundColor(new ColorRGBA(0f, 0.04f, 0.01f, 1f));
             hud.setVisionNuit(true);
         } else {
             ambiant.setColor(ColorRGBA.White.mult(8.0f));
+            soleil.setColor(ColorRGBA.White.mult(2.0f));
+            soleil.setDirection(new com.jme3.math.Vector3f(-0.5f, -1f, -0.3f).normalizeLocal());
             app.getViewPort().setBackgroundColor(ColorRGBA.Black);
             hud.setVisionNuit(false);
         }
