@@ -73,6 +73,39 @@ public class Laboratory {
             doorManager.enregistrerExtrait(porte, rootNode);
         }
 
+        // ── 7. Enigme 1 (Noah) — Tableau d'indices + borne Digicode salle 1 ───
+        // Tableau accroché au mur du fond de la salle 1 (derrière le spawn)
+        com.jme3.scene.shape.Quad quadTableau = new com.jme3.scene.shape.Quad(6.0f, 3.0f);
+        Geometry objetTableau = new Geometry("Tableau_Indices", quadTableau);
+        Material matTableau = new Material(am, "Common/MatDefs/Misc/Unshaded.j3md");
+        try {
+            com.jme3.texture.Texture texTableau = am.loadTexture("Textures/tableau_enigme.png");
+            texTableau.setMagFilter(com.jme3.texture.Texture.MagFilter.Nearest);
+            texTableau.setMinFilter(com.jme3.texture.Texture.MinFilter.NearestNoMipMaps);
+            matTableau.setTexture("ColorMap", texTableau);
+        } catch (Exception e) {
+            System.out.println("[Laboratory] tableau_enigme.png introuvable — couleur blanche par défaut");
+            matTableau.setColor("Color", ColorRGBA.White);
+        }
+        objetTableau.setMaterial(matTableau);
+        // Position : mur du fond salle 1 (Z=-3 = derrière le spawn Z=3, face au joueur qui regarde en arrière)
+        objetTableau.setLocalTranslation(new Vector3f(2.0f, 1.5f, -3.0f));
+        rootNode.attachChild(objetTableau);
+
+        // Borne digicode salle 1 (boîtier interactif — raycasting par nom)
+        com.jme3.scene.shape.Box boiteDigicode = new com.jme3.scene.shape.Box(0.1f, 0.15f, 0.05f);
+        Geometry objetDigicode = new Geometry("Digicode_Interactif_Salle1", boiteDigicode);
+        Material matDigicode = new Material(am, "Common/MatDefs/Misc/Unshaded.j3md");
+        matDigicode.setColor("Color", ColorRGBA.DarkGray);
+        objetDigicode.setMaterial(matDigicode);
+        objetDigicode.setLocalTranslation(new Vector3f(2.5f, 1.2f, -3.0f));
+        // Physique (nécessaire pour que le raycasting fonctionne)
+        RigidBodyControl rbcDigicode = new RigidBodyControl(
+                CollisionShapeFactory.createBoxShape(objetDigicode), 0f);
+        objetDigicode.addControl(rbcDigicode);
+        bullet.getPhysicsSpace().add(rbcDigicode);
+        rootNode.attachChild(objetDigicode);
+
         return doorManager;
     }
 

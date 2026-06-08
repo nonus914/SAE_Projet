@@ -58,6 +58,12 @@ public class HudManager {
     // Overlay charade (vision nocturne room 3)
     private BitmapText texteCharade;
 
+    // Panneau Dialogue NPC (Enigme 2 — Daniel)
+    private Node       panneauDialogue;
+    private BitmapText texteDialogueSpeaker;
+    private BitmapText texteDialogueContenu;
+    private boolean    dialogueOuvert = false;
+
     // ─────────────────────────────────────────────────────────────────────────
 
     public HudManager(AssetManager am, Node guiNode, int largeur, int hauteur) {
@@ -179,6 +185,9 @@ public class HudManager {
         // ── Panneau Digicode ──────────────────────────────────────────────────
         construireDigicode();
 
+        // ── Panneau Dialogue NPC (Enigme 2) ───────────────────────────────────
+        construireDialogue();
+
         // ── Charade overlay ───────────────────────────────────────────────────
         texteCharade = new BitmapText(font, false);
         texteCharade.setSize(font.getCharSet().getRenderedSize() * 1.05f);
@@ -234,6 +243,81 @@ public class HudManager {
         hint.setLocalTranslation(dw / 2f - 160, 28, 2f);
         panneauDigicode.attachChild(hint);
     }
+
+    // ── Construction panneau Dialogue NPC ─────────────────────────────────────
+
+    private void construireDialogue() {
+        float dw = largeurEcran * 0.72f; // ~72% de la largeur écran
+        float dh = 190f;
+        float dx = (largeurEcran - dw) / 2f;
+        float dy = 80f; // au-dessus de la zone batterie
+
+        panneauDialogue = new Node("Dialogue");
+        panneauDialogue.setLocalTranslation(dx, dy, 5f); // z=5 au-dessus du reste du HUD
+
+        // ── Fond entièrement opaque (alpha=FALSE = rendu avant les BitmapText) ──
+        // Ne PAS utiliser alpha=true ici : en Bucket.Transparent le z-sort peut
+        // placer le fond par-dessus les textes. En opaque il render avant eux.
+        panneauDialogue.attachChild(
+            quad(0, 0, dw, dh, 0f, new ColorRGBA(0f, 0f, 0f, 1f), false));
+
+        // ── Bandeau nom speaker (fond orange sombre) ──────────────────────────
+        float bandeH = 38f;
+        panneauDialogue.attachChild(
+            quad(0, dh - bandeH, dw, bandeH, 1f, new ColorRGBA(0.6f, 0.25f, 0f, 1f), false));
+
+        // ── Bordure orange vive (4px) ─────────────────────────────────────────
+        ColorRGBA orange = new ColorRGBA(1f, 0.55f, 0.08f, 1f);
+        panneauDialogue.attachChild(quad(0,      dh - 4, dw, 4,  2f, orange, false)); // haut
+        panneauDialogue.attachChild(quad(0,      0,      dw, 4,  2f, orange, false)); // bas
+        panneauDialogue.attachChild(quad(0,      0,      4,  dh, 2f, orange, false)); // gauche
+        panneauDialogue.attachChild(quad(dw - 4, 0,      4,  dh, 2f, orange, false)); // droite
+
+        // ── Nom du speaker (blanc sur bandeau orange) ─────────────────────────
+        texteDialogueSpeaker = txt("", 1.35f, ColorRGBA.White);
+        texteDialogueSpeaker.setLocalTranslation(14, dh - bandeH + 10, 3f);
+        panneauDialogue.attachChild(texteDialogueSpeaker);
+
+        // ── Texte du dialogue (jaune vif → ultra-lisible sur fond noir) ───────
+        texteDialogueContenu = txt("", 1.2f, new ColorRGBA(1f, 1f, 0.75f, 1f));
+        texteDialogueContenu.setLocalTranslation(14, dh - bandeH - 18, 3f);
+        panneauDialogue.attachChild(texteDialogueContenu);
+
+        // ── Hint continuer ────────────────────────────────────────────────────
+        BitmapText hintCont = txt("[E] Continuer", 0.9f,
+                new ColorRGBA(0.7f, 0.7f, 0.7f, 1f));
+        hintCont.setLocalTranslation(dw - 160f, 14, 3f);
+        panneauDialogue.attachChild(hintCont);
+    }
+
+    // ── API Dialogue NPC ──────────────────────────────────────────────────────
+
+    /** Ouvre le panneau avec speaker + première ligne de dialogue. */
+    public void ouvrirDialogue(String speaker, String ligne) {
+        if (!dialogueOuvert) {
+            dialogueOuvert = true;
+            texteDialogueSpeaker.setText(speaker);
+            texteDialogueContenu.setText(ligne);
+            guiNode.attachChild(panneauDialogue);
+        }
+    }
+
+    /** Met à jour le contenu du dialogue (ligne suivante). */
+    public void setLigneDialogue(String speaker, String ligne) {
+        texteDialogueSpeaker.setText(speaker);
+        texteDialogueContenu.setText(ligne);
+    }
+
+    public void fermerDialogue() {
+        if (dialogueOuvert) {
+            dialogueOuvert = false;
+            guiNode.detachChild(panneauDialogue);
+        }
+    }
+
+    public boolean isDialogueOuvert() { return dialogueOuvert; }
+
+    // ─────────────────────────────────────────────────────────────────────────
 
     /**
      * Ouvre / ferme le panneau SAC A DOS (touche I).
@@ -349,6 +433,7 @@ public class HudManager {
         guiNode.detachChild(texteCharade);
         if (inventaireOuvert) guiNode.detachChild(panneauInventaire);
         if (digicodeOuvert)   guiNode.detachChild(panneauDigicode);
+        if (dialogueOuvert)   guiNode.detachChild(panneauDialogue);
     }
 
     // ── Helpers internes ─────────────────────────────────────────────────────

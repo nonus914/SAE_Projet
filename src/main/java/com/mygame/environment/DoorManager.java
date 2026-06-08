@@ -178,6 +178,16 @@ public class DoorManager {
         return groupeProche != null ? groupeProche.numero : null;
     }
 
+    /** @return position monde du panneau de la porte, null si introuvable */
+    public Vector3f getPosPorte(String numero) {
+        for (DoorGroup g : groupes) {
+            if (g.numero.equals(numero)) {
+                return g.panel.getWorldTranslation().clone();
+            }
+        }
+        return null;
+    }
+
     public boolean interagir() {
         if (groupeProche == null) return false;
         if (groupeProche.verrouillee) return false; // signale porte verrouillee
@@ -200,7 +210,7 @@ public class DoorManager {
                                   float halfX, float halfY,
                                   Node rootNode) {
         Material mat = new Material(assetManager, "Common/MatDefs/Misc/Unshaded.j3md");
-        mat.setColor("Color", new ColorRGBA(0.80f, 0.78f, 0.72f, 1f)); // beige mur
+        mat.setColor("Color", new ColorRGBA(0.10f, 0.12f, 0.15f, 1f)); // metal sombre sci-fi
 
         Node vbNode = new Node(nom);
         vbNode.setLocalTranslation(centre);
@@ -271,8 +281,12 @@ public class DoorManager {
             // Cacher le mesh de la porte
             panel.setCullHint(Spatial.CullHint.Always);
             if (stripe != null) stripe.setCullHint(Spatial.CullHint.Always);
-            // Retirer la collision
-            if (rbc != null) bullet.getPhysicsSpace().remove(rbc);
+            // Retirer la collision : d'abord du physics space, puis du spatial
+            if (rbc != null) {
+                bullet.getPhysicsSpace().remove(rbc);
+                panel.removeControl(rbc);
+                rbc = null;
+            }
             // Retirer le view-blocker visuel
             if (viewBlocker != null) viewBlocker.setCullHint(Spatial.CullHint.Always);
         }
