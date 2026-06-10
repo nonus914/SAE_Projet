@@ -58,17 +58,17 @@ public class GameState extends BaseAppState {
     private static final String CODE_E1       = "1953"; // enigme 1 (Noah)
     private static final String CODE_E3       = "2703"; // enigme 3 (charade)
     private String porteCibleDigicode         = "";     // "001" ou "003"
-    private static final float  ROOM3_Z_MIN   = 26f;
-    private static final float  ROOM3_Z_MAX   = 56f; // sombre jusqu'a la sortie
+    private static final float  ROOM3_Z_MIN   = 43f;  // R3 demarre a Z=40 — decalage de 3m
+    private static final float  ROOM3_Z_MAX   = 88f;  // sombre jusqu'a la fin de R4 (R4 exit = Z=88)
     private boolean enigme3Resolue    = false;
     private String  codeEntree        = "";
     private float   digiCloseTimer    = -1f; // >0 = compte a rebours avant fermeture
 
     // ── Enigme 2 — Robot Daniel + Clé à molette (salle 2) ───────────────────
-    private static final Vector3f POS_DANIEL = new Vector3f( 3.0f, 1.0f, 14.0f);
+    private static final Vector3f POS_DANIEL = new Vector3f( 3.0f, 1.0f, 25.0f); // R2 elargie : Z=14 → 25
     // Cle a molette : au sol devant le rack mural (Y=0.2), dans l'empreinte X du rack
     // Visible & ramassable SEULEMENT en position accroupie (camera ~1.85m vs ~2.55m debout)
-    private static final Vector3f POS_CLE    = new Vector3f(-8.6f, 0.2f, 21.5f);
+    private static final Vector3f POS_CLE    = new Vector3f(-8.6f, 0.2f, 36.0f); // R2 elargie : Z=21.5 → 36
     // NOTE : police bitmap ASCII — pas d'accents (e accent = blanc, c cedille = absent)
     private static final String[] DIALOGUES_DANIEL = {
         "Hey ! Enfin quelqu'un ! Je suis bloque dans ce labo depuis des heures !",
@@ -115,12 +115,12 @@ public class GameState extends BaseAppState {
         app.getRootNode().addLight(soleil);
 
         // Point lights d'ambiance par salle (pas en room 3 = salle sombre)
-        ajouterLumiereAmbiante(new Vector3f( 3f, 2.5f,  4f), new ColorRGBA(1.0f, 0.85f, 0.6f, 1f), 5f, 14f); // R1 chaud
-        ajouterLumiereAmbiante(new Vector3f(-3f, 2.5f,  7f), new ColorRGBA(0.5f, 0.8f,  1.0f, 1f), 4f, 14f); // R1 froid
-        ajouterLumiereAmbiante(new Vector3f( 0f, 2.5f, 16f), new ColorRGBA(0.3f, 0.6f,  1.0f, 1f), 6f, 18f); // R2 bleu
-        ajouterLumiereAmbiante(new Vector3f( 0f, 2.5f, 22f), new ColorRGBA(0.4f, 1.0f,  0.5f, 1f), 4f, 12f); // R2 vert
-        ajouterLumiereAmbiante(new Vector3f( 0f, 2.5f, 48f), new ColorRGBA(0.2f, 0.9f,  1.0f, 1f), 6f, 22f); // R4 cyan
-        ajouterLumiereAmbiante(new Vector3f( 0f, 2.5f, 64f), new ColorRGBA(0.6f, 0.2f,  1.0f, 1f), 6f, 20f); // R5 violet
+        ajouterLumiereAmbiante(new Vector3f( 3f, 2.5f, 10.0f), new ColorRGBA(1.0f, 0.85f, 0.6f, 1f), 5f, 18f); // R1 chaud
+        ajouterLumiereAmbiante(new Vector3f(-3f, 2.5f, 14.5f), new ColorRGBA(0.5f, 0.8f,  1.0f, 1f), 4f, 18f); // R1 froid
+        ajouterLumiereAmbiante(new Vector3f( 0f, 2.5f, 28.0f), new ColorRGBA(0.3f, 0.6f,  1.0f, 1f), 6f, 22f); // R2 bleu
+        ajouterLumiereAmbiante(new Vector3f( 0f, 2.5f, 37.0f), new ColorRGBA(0.4f, 1.0f,  0.5f, 1f), 4f, 16f); // R2 vert
+        ajouterLumiereAmbiante(new Vector3f( 0f, 2.5f, 76.0f), new ColorRGBA(0.2f, 0.9f,  1.0f, 1f), 6f, 28f); // R4 cyan
+        ajouterLumiereAmbiante(new Vector3f( 0f, 2.5f,112.0f), new ColorRGBA(0.6f, 0.2f,  1.0f, 1f), 6f, 28f); // R5 violet
 
         // Labo + portes
         doorManager = new Laboratory().construire(app.getAssetManager(), app.getRootNode(), bullet);
@@ -130,7 +130,7 @@ public class GameState extends BaseAppState {
         // Scale 1.5 → 1.28m × 1.63m × 1.10m — posé sur le sol (Y = demi-hauteur × scale)
         Spatial generator = app.getAssetManager().loadModel("Models/props/basic_generator.glb");
         generator.setLocalScale(1.5f);
-        generator.setLocalTranslation(-9.0f, 0.813f, 43.0f);
+        generator.setLocalTranslation(-9.0f, 0.813f, 68.5f); // R4 elargie : Z=43 → 68.5
         app.getRootNode().attachChild(generator);
 
         // Mains du joueur
@@ -147,15 +147,15 @@ public class GameState extends BaseAppState {
 
         // Piles (auto-contact)
         app.getRootNode().attachChild(pilesNode);
-        placerPile(new Vector3f( 2f, 1f,  5f));
-        placerPile(new Vector3f(-2f, 1f, 20f));
-        placerPile(new Vector3f( 1f, 1f, 36f));
+        placerPile(new Vector3f( 2f, 1f, 11.5f)); // R1 elargie : Z=5 → 11.5
+        placerPile(new Vector3f(-2f, 1f, 34.0f)); // R2 elargie : Z=20 → 34
+        placerPile(new Vector3f( 1f, 1f, 58.0f)); // R3 elargie : Z=36 → 58
 
         // Objets ramassables (E key + raycasting, marqués "Ramassable")
         app.getRootNode().attachChild(objetsNode);
-        placerObjet("Cle Salle 1",       new Vector3f(-1f, 1f,  6f), ColorRGBA.Yellow);
-        placerObjet("Badge Acces",        new Vector3f( 1f, 1f, 22f), new ColorRGBA(0.2f, 0.8f, 1f, 1f));
-        placerObjet("Carte Acces Rouge",  new Vector3f( 0f, 1f, 38f), ColorRGBA.Red);
+        placerObjet("Cle Salle 1",       new Vector3f(-1f, 1f, 13.0f), ColorRGBA.Yellow);            // R1→13
+        placerObjet("Badge Acces",        new Vector3f( 1f, 1f, 37.0f), new ColorRGBA(0.2f, 0.8f, 1f, 1f)); // R2→37
+        placerObjet("Carte Acces Rouge",  new Vector3f( 0f, 1f, 61.0f), ColorRGBA.Red);              // R3→61
 
         // HUD
         hud = new HudManager(
@@ -180,7 +180,7 @@ public class GameState extends BaseAppState {
         spatialDaniel = app.getAssetManager().loadModel("Models/props/robot_daniel.glb");
         spatialDaniel.setName("Daniel_Robot");
         spatialDaniel.setLocalScale(1.8f);
-        // Face à l'entrée de la salle 2 (joueur arrive de Z=8 vers Z=24)
+        // Face a l'entree de la salle 2 (joueur arrive de Z=16 vers Z=40)
         // Rotation 180° autour de Y → regarde vers -Z = vers le joueur qui entre
         spatialDaniel.rotate(0f, FastMath.PI, 0f);
         spatialDaniel.setLocalTranslation(POS_DANIEL.x, 0f, POS_DANIEL.z);
@@ -445,56 +445,57 @@ public class GameState extends BaseAppState {
     // ── Enigme 2 — Mobilier salle 2 ──────────────────────────────────────────
 
     /**
-     * Crée les meubles de la salle 2 (géométries Java simples).
-     * Room 2 : JME Z ≈ 8 à 24, X ≈ -10 à 10, sol Y = 0.
+     * Cree les meubles de la salle 2 (geometries Java simples).
+     * Room 2 : JME Z ≈ 16 a 40, X ≈ -10 a 10, sol Y = 0.  (apres scaling x1.5)
+     * Formule : new_Z = 4 + 1.5 * old_Z
      */
     private void creerMeublesRoom2() {
         // Tables de labo (mur gauche + mur droit)
         creerMeuble("Table_Labo1_R2",
-            new Vector3f(-7.5f, 0.48f, 11.5f), new Vector3f(1.8f, 0.48f, 0.8f),
+            new Vector3f(-7.5f, 0.48f, 21.0f), new Vector3f(1.8f, 0.48f, 0.8f),  // Z:11.5→21.0
             new ColorRGBA(0.22f, 0.25f, 0.28f, 1f));
         creerMeuble("Table_Labo2_R2",
-            new Vector3f( 7.5f, 0.48f, 16.5f), new Vector3f(1.8f, 0.48f, 0.8f),
+            new Vector3f( 7.5f, 0.48f, 29.0f), new Vector3f(1.8f, 0.48f, 0.8f),  // Z:16.5→29.0
             new ColorRGBA(0.22f, 0.25f, 0.28f, 1f));
 
         // Caisses sur table gauche
         creerMeuble("Caisse1_R2",
-            new Vector3f(-7.5f, 1.34f, 11.0f), new Vector3f(0.34f, 0.34f, 0.34f),
+            new Vector3f(-7.5f, 1.34f, 20.5f), new Vector3f(0.34f, 0.34f, 0.34f), // Z:11.0→20.5
             new ColorRGBA(0.40f, 0.34f, 0.20f, 1f));
         creerMeuble("Caisse2_R2",
-            new Vector3f(-6.8f, 1.34f, 12.1f), new Vector3f(0.28f, 0.28f, 0.28f),
+            new Vector3f(-6.8f, 1.34f, 22.0f), new Vector3f(0.28f, 0.28f, 0.28f), // Z:12.1→22.0
             new ColorRGBA(0.36f, 0.31f, 0.18f, 1f));
 
-        // Petit écran sur table droite (flat panel labo)
+        // Petit ecran sur table droite (flat panel labo)
         creerMeuble("Ecran_R2",
-            new Vector3f( 7.5f, 1.52f, 16.0f), new Vector3f(0.48f, 0.38f, 0.05f),
+            new Vector3f( 7.5f, 1.52f, 28.0f), new Vector3f(0.48f, 0.38f, 0.05f), // Z:16.0→28.0
             new ColorRGBA(0.07f, 0.07f, 0.10f, 1f));
 
-        // ── Rack mural sci-fi (mur gauche, coin fond) — Java geometry, zero GLB ──
+        // Rack mural sci-fi (mur gauche, coin fond) — Java geometry, zero GLB
         // Cle a molette au sol en dessous (POS_CLE) — visible seulement accroupi
-        creerRackMural(-9.0f, 22.0f);
+        creerRackMural(-9.0f, 37.0f); // Z:22.0→37.0
 
         // Caisses au sol (milieu salle)
         creerMeuble("Caisse_Sol1_R2",
-            new Vector3f(-2.1f, 0.42f, 17.5f), new Vector3f(0.55f, 0.42f, 0.55f),
+            new Vector3f(-2.1f, 0.42f, 30.5f), new Vector3f(0.55f, 0.42f, 0.55f), // Z:17.5→30.5
             new ColorRGBA(0.40f, 0.34f, 0.20f, 1f));
         creerMeuble("Caisse_Sol2_R2",
-            new Vector3f(-2.9f, 0.42f, 17.5f), new Vector3f(0.55f, 0.42f, 0.55f),
+            new Vector3f(-2.9f, 0.42f, 30.5f), new Vector3f(0.55f, 0.42f, 0.55f), // Z:17.5→30.5
             new ColorRGBA(0.36f, 0.31f, 0.18f, 1f));
 
-        // Étagère murale (mur droit, entrée salle)
+        // Etagere murale (mur droit, entree salle)
         creerMeuble("Etagere_R2",
-            new Vector3f( 9.3f, 1.80f, 10.5f), new Vector3f(0.15f, 0.80f, 2.0f),
+            new Vector3f( 9.3f, 1.80f, 20.0f), new Vector3f(0.15f, 0.80f, 2.0f),  // Z:10.5→20.0
             new ColorRGBA(0.20f, 0.22f, 0.26f, 1f));
 
         // Pilier support sci-fi (milieu salle)
         creerMeuble("Pilier1_R2",
-            new Vector3f( 0.0f, 1.50f, 13.0f), new Vector3f(0.20f, 1.50f, 0.20f),
+            new Vector3f( 0.0f, 1.50f, 23.5f), new Vector3f(0.20f, 1.50f, 0.20f), // Z:13.0→23.5
             new ColorRGBA(0.30f, 0.32f, 0.36f, 1f));
 
-        // Établi (mur du fond salle 2, face à l'entrée de la salle 3)
+        // Etabli (mur du fond salle 2, face a l'entree de la salle 3)
         creerMeuble("Etabli_R2",
-            new Vector3f( 4.0f, 0.48f, 23.0f), new Vector3f(1.5f, 0.48f, 0.6f),
+            new Vector3f( 4.0f, 0.48f, 38.5f), new Vector3f(1.5f, 0.48f, 0.6f),   // Z:23.0→38.5
             new ColorRGBA(0.25f, 0.27f, 0.30f, 1f));
 
         System.out.println("[Enigme2] Mobilier salle 2 cree (rack mural Java + 9 elements).");
