@@ -16,6 +16,9 @@ import com.jme3.math.ColorRGBA;
 import com.jme3.math.FastMath;
 import com.jme3.math.Ray;
 import com.jme3.math.Vector3f;
+import com.jme3.post.FilterPostProcessor;
+import com.jme3.post.filters.BloomFilter;
+import com.jme3.post.filters.ColorOverlayFilter;
 import com.jme3.scene.Geometry;
 import com.jme3.scene.Node;
 import com.jme3.scene.Spatial;
@@ -45,8 +48,10 @@ public class GameState extends BaseAppState {
     private DirectionalLight soleil;
     private boolean visionNocturne = false;
 
-    private static final float AMBIENT_NORMAL = 15.0f;
+    private static final float AMBIENT_NORMAL = 0.15f; // props PBR visibles — le labo est Unshaded (ignore cet ambient)
     private final List<PointLight> pointLights = new ArrayList<>();
+    private FilterPostProcessor fpp; // post-traitement : glow neon (Bloom)
+    private ColorOverlayFilter overlay; // coupe/restaure la lumiere du labo (Unshaded)
 
     // ── Piles ramassables (auto-contact) ─────────────────────────────────────
     private final Node pilesNode = new Node("Piles");
@@ -55,7 +60,7 @@ public class GameState extends BaseAppState {
     private final Node objetsNode = new Node("Objets");
 
     // ── Enigmes — Digicodes ───────────────────────────────────────────────────
-    private static final String CODE_E1       = "1953"; // enigme 1 (Noah)
+    private static final String CODE_E1       = "1945"; // enigme 1 : mot "AIDE" via tableau (A1Z26)
     private static final String CODE_E3       = "2703"; // enigme 3 (charade)
     private String porteCibleDigicode         = "";     // "001" ou "003"
     private static final float  ROOM3_Z_MIN   = 43f;  // R3 demarre a Z=40 — decalage de 3m
@@ -69,6 +74,8 @@ public class GameState extends BaseAppState {
     // Cle a molette : au sol devant le rack mural (Y=0.2), dans l'empreinte X du rack
     // Visible & ramassable SEULEMENT en position accroupie (camera ~1.85m vs ~2.55m debout)
     private static final Vector3f POS_CLE    = new Vector3f(-8.6f, 0.2f, 36.0f); // R2 elargie : Z=21.5 → 36
+    private static final Vector3f POS_CROWBAR = new Vector3f(-6f, 0.4f, 10f); // pied de biche — salle 1 (sabotage)
+    private static final Vector3f POS_PILE    = new Vector3f(-9f, 0.3f, 50f); // 2e pile 9V — coin salle 3 (un peu cachee)
     // NOTE : police bitmap ASCII — pas d'accents (e accent = blanc, c cedille = absent)
     private static final String[] DIALOGUES_DANIEL = {
         "Hey ! Enfin quelqu'un ! Je suis bloque dans ce labo depuis des heures !",
@@ -80,6 +87,34 @@ public class GameState extends BaseAppState {
     private boolean enigme2CleRamassee = false;
     private boolean enigme2Resolue     = false;
     private int     enigme2DiagIdx     = 0;
+    private int     etatDaniel         = 0;     // 0 intro · 1 va ouvrir · 2 ouverte · 3 blackout-choix · 4 choix fait
+    private String[] dialoguesCourants = DIALOGUES_DANIEL;
+
+    // ── Enigme 4 — Blackout salle 4, generateur, alarme, QTE ─────────────────
+    private static final float ROOM4_Z_MIN  = 65f;  // entree salle 4 (porte 003 a Z=64)
+    private boolean enigme4Active     = false; // blackout declenche en salle 4
+    private boolean generateurVu      = false; // generateur inspecte (→ va voir Daniel)
+    private boolean generateurRepare  = false;
+    private boolean generateurDetruit = false;
+    private boolean choixReparer      = false;
+    private int     pilesEnigme4      = 0;     // piles 9V (besoin de 2)
+    private boolean alarmeActive      = false;
+    private float   tempsAlarme       = 0f;
+    private boolean qteActif          = false;
+    private final String[] sequenceQTE = {"QTE_Haut","QTE_Haut","QTE_Droite","QTE_Bas"};
+    private final String[] nomsQTE     = {"HAUT","HAUT","DROITE","BAS"};
+    private int     qteIndex          = 0;
+    private boolean victoireEnCours   = false;
+    private float   finTimer          = -1f;
+    private boolean enigme1Resolue    = false;
+    private boolean fuiteSalle5       = false; // course finale salle 5
+    private float   fuiteTimer        = 0f;
+    private boolean porte004Ouverte   = false;
+    private com.jme3.audio.AudioNode sirene = null;
+    private Spatial spatialCrowbar    = null;
+    private Spatial spatialPile       = null;
+    private Geometry marqueurPile     = null;
+    private Geometry marqueurCrowbar  = null;
 
     private static final String CHARADE =                 // ASCII pur (bitmap font)
         "=== CHARADE - PORTE SALLE 3 ===\n" +
@@ -109,26 +144,84 @@ public class GameState extends BaseAppState {
         ambiant.setColor(ColorRGBA.White.mult(AMBIENT_NORMAL));
         app.getRootNode().addLight(ambiant);
 
+        // Lumiere directionnelle douce pour les props (Daniel, lit, generateur...)
+        // Le labo est Unshaded — cette lumiere n'affecte QUE les props GLB PBR
         soleil = new DirectionalLight();
         soleil.setDirection(new Vector3f(0f, -1f, 0.2f).normalizeLocal());
-        soleil.setColor(ColorRGBA.White.mult(0.8f));
+        soleil.setColor(ColorRGBA.White.mult(0.35f));
         app.getRootNode().addLight(soleil);
 
-        // Point lights d'ambiance par salle (pas en room 3 = salle sombre)
-        ajouterLumiereAmbiante(new Vector3f( 3f, 2.5f, 10.0f), new ColorRGBA(1.0f, 0.85f, 0.6f, 1f), 5f, 18f); // R1 chaud
-        ajouterLumiereAmbiante(new Vector3f(-3f, 2.5f, 14.5f), new ColorRGBA(0.5f, 0.8f,  1.0f, 1f), 4f, 18f); // R1 froid
-        ajouterLumiereAmbiante(new Vector3f( 0f, 2.5f, 28.0f), new ColorRGBA(0.3f, 0.6f,  1.0f, 1f), 6f, 22f); // R2 bleu
-        ajouterLumiereAmbiante(new Vector3f( 0f, 2.5f, 37.0f), new ColorRGBA(0.4f, 1.0f,  0.5f, 1f), 4f, 16f); // R2 vert
-        ajouterLumiereAmbiante(new Vector3f( 0f, 2.5f, 76.0f), new ColorRGBA(0.2f, 0.9f,  1.0f, 1f), 6f, 28f); // R4 cyan
-        ajouterLumiereAmbiante(new Vector3f( 0f, 2.5f,112.0f), new ColorRGBA(0.6f, 0.2f,  1.0f, 1f), 6f, 28f); // R5 violet
+        // ── Point lights colores (eclairent uniquement les props GLB PBR) ────
+        // Intensite moderee (x1.2) : props visibles sans blowout.
+        // Le labo Unshaded ne reagit pas a ces lights (couleur fixe par code).
+        //
+        // R1 : bleu-cyan
+        ajouterLumiereAmbiante(new Vector3f( 0f, 2.5f,  4.0f), new ColorRGBA(0.40f, 0.72f, 1.0f, 1f), 1.2f, 22f);
+        ajouterLumiereAmbiante(new Vector3f( 0f, 2.5f, 11.0f), new ColorRGBA(0.30f, 0.65f, 1.0f, 1f), 1.2f, 22f);
+        // R2 : vert
+        ajouterLumiereAmbiante(new Vector3f( 0f, 2.5f, 24.0f), new ColorRGBA(0.28f, 1.0f,  0.35f, 1f), 1.2f, 22f);
+        ajouterLumiereAmbiante(new Vector3f( 0f, 2.5f, 36.0f), new ColorRGBA(0.20f, 0.90f, 0.30f, 1f), 1.2f, 22f);
+        // R3 → lumiere neutre tres douce (salle sombre mais props minimalement visibles)
+        ajouterLumiereAmbiante(new Vector3f( 0f, 2.5f, 52.0f), new ColorRGBA(0.15f, 0.10f, 0.08f, 1f), 0.8f, 24f);
+        // R4 : cyan
+        ajouterLumiereAmbiante(new Vector3f( 0f, 2.5f, 70.0f), new ColorRGBA(0.05f, 0.80f, 1.0f, 1f), 1.2f, 22f);
+        ajouterLumiereAmbiante(new Vector3f( 0f, 2.5f, 82.0f), new ColorRGBA(0.10f, 0.70f, 0.90f, 1f), 1.2f, 22f);
+        // R5 : violet/magenta
+        ajouterLumiereAmbiante(new Vector3f( 0f, 2.5f,  98.0f), new ColorRGBA(0.60f, 0.0f,  1.0f, 1f), 1.5f, 26f);
+        ajouterLumiereAmbiante(new Vector3f( 0f, 2.5f, 116.0f), new ColorRGBA(1.0f,  0.10f, 0.45f, 1f), 1.2f, 24f);
+        ajouterLumiereAmbiante(new Vector3f( 0f, 2.5f, 130.0f), new ColorRGBA(0.60f, 0.0f,  1.0f, 1f), 1.5f, 22f);
+
+        // ── Glow neon SELECTIF (BloomFilter, GlowMode.Objects) ───────────────
+        // Seuls les materiaux qui definissent un GlowColor brillent (les neons,
+        // marques dans Laboratory). Le tableau d'enigme, les murs et le sol ne
+        // bavent plus. Cout GPU tres faible.
+        fpp = new FilterPostProcessor(app.getAssetManager());
+        BloomFilter bloom = new BloomFilter(BloomFilter.GlowMode.Objects);
+        bloom.setBloomIntensity(2.2f);    // force du halo neon
+        bloom.setBlurScale(1.5f);         // etalement du halo
+        fpp.addFilter(bloom);
+
+        // Overlay plein ecran : coupe/restaure la lumiere du labo (Unshaded =
+        // insensible aux lumieres 3D) et applique la vision nocturne. White = neutre.
+        overlay = new ColorOverlayFilter(new ColorRGBA(1f, 1f, 1f, 1f));
+        fpp.addFilter(overlay);
+
+        app.getViewPort().addProcessor(fpp);
+
+        // Sirene d'alarme (optionnelle : depose un fichier assets/Sounds/alarm.ogg)
+        try {
+            sirene = new com.jme3.audio.AudioNode(app.getAssetManager(), "Sounds/alarm.ogg",
+                    com.jme3.audio.AudioData.DataType.Buffer);
+            sirene.setLooping(true);
+            sirene.setPositional(false);
+            sirene.setVolume(2.5f);
+            app.getRootNode().attachChild(sirene);
+        } catch (Exception e) {
+            sirene = null;
+            System.out.println("[Audio] Sirene absente (Sounds/alarm.ogg) - son ignore.");
+        }
 
         // Labo + portes
         doorManager = new Laboratory().construire(app.getAssetManager(), app.getRootNode(), bullet);
+
+        // ── Lit salle 1 : agrandi (x1.75) et cale contre le MUR DU FOND (Z=-8),
+        //    en face de la porte d'entree (Door_001 au centre, Z=16). Tete au mur,
+        //    le lit s'etend vers la porte ; le joueur spawn dessus (cf PlayerControl).
+        // GLB bbox : X -1.07→+0.03  Y 0→1.21  Z -0.03→+2.14 (longueur le long de Z).
+        // Centrage X=0 : translateX = 0.91 (compense le centre local -0.52*1.75).
+        // Tete au mur : face interieure du fond a Z=-7.5 → translateZ = -7.45.
+        Spatial lit = app.getAssetManager().loadModel("Models/props/old_bed.glb");
+        lit.setName("Lit_Salle1");
+        lit.setLocalScale(1.75f);
+        lit.setLocalTranslation(0.91f, 0f, -7.45f);
+        app.getRootNode().attachChild(lit);
+        System.out.println("[Salle1] Lit place. Bounds : " + lit.getWorldBound());
 
         // Générateur — room 4, mur gauche, juste après porte 003
         // Dimensions JME : 0.855m (X) × 1.084m (Y=hauteur) × 0.732m (Z) — origine au centre
         // Scale 1.5 → 1.28m × 1.63m × 1.10m — posé sur le sol (Y = demi-hauteur × scale)
         Spatial generator = app.getAssetManager().loadModel("Models/props/basic_generator.glb");
+        generator.setName("Generateur_Interactif"); // interaction enigme 4 (etape suivante)
         generator.setLocalScale(1.5f);
         generator.setLocalTranslation(-9.0f, 0.813f, 68.5f); // R4 elargie : Z=43 → 68.5
         app.getRootNode().attachChild(generator);
@@ -151,11 +244,8 @@ public class GameState extends BaseAppState {
         placerPile(new Vector3f(-2f, 1f, 34.0f)); // R2 elargie : Z=20 → 34
         placerPile(new Vector3f( 1f, 1f, 58.0f)); // R3 elargie : Z=36 → 58
 
-        // Objets ramassables (E key + raycasting, marqués "Ramassable")
+        // Node objets ramassables conserve (blocs de test rouge/jaune retires)
         app.getRootNode().attachChild(objetsNode);
-        placerObjet("Cle Salle 1",       new Vector3f(-1f, 1f, 13.0f), ColorRGBA.Yellow);            // R1→13
-        placerObjet("Badge Acces",        new Vector3f( 1f, 1f, 37.0f), new ColorRGBA(0.2f, 0.8f, 1f, 1f)); // R2→37
-        placerObjet("Carte Acces Rouge",  new Vector3f( 0f, 1f, 61.0f), ColorRGBA.Red);              // R3→61
 
         // HUD
         hud = new HudManager(
@@ -171,10 +261,16 @@ public class GameState extends BaseAppState {
         app.getFlyByCamera().setRotationSpeed(2f);
         app.getInputManager().setCursorVisible(false);
 
+        // Orientation initiale : le joueur (sur le lit, au fond) regarde la porte
+        // d'entree, droit devant vers +Z (Door_001 a Z=16). FlyByCamera applique
+        // ensuite les mouvements souris a partir de cette direction.
+        app.getCamera().lookAtDirection(new Vector3f(0f, 0f, 1f), Vector3f.UNIT_Y);
+
         // Verrouiller les portes à code
         doorManager.verrouiller("001"); // enigme 1 — Noah
         doorManager.verrouiller("002"); // enigme 2 — clé à molette
         doorManager.verrouiller("003"); // enigme 3 — charade
+        doorManager.verrouiller("004"); // enigme 4 — generateur (etape suivante)
 
         // ── Enigme 2 — Robot Daniel (PNJ salle 2) ────────────────────────────
         spatialDaniel = app.getAssetManager().loadModel("Models/props/robot_daniel.glb");
@@ -200,6 +296,14 @@ public class GameState extends BaseAppState {
 
         // ── Mobilier salle 2 (géométries Java) ───────────────────────────────
         creerMeublesRoom2();
+
+        // ── Enigme 4 — pied de biche (salle 1) + 2e pile 9V (salle 3) ─────────
+        // Echelles a ajuster visuellement ; le ramassage est par proximite.
+        spatialCrowbar = chargerProp("Models/props/crowbar.glb",   "Pied_De_Biche", POS_CROWBAR, 1.0f); // ~1 m
+        spatialPile    = chargerProp("Models/props/9v_battery.glb", "Pile_9V_2",     POS_PILE,    0.4f); // ~40 cm (visible)
+        // Marqueurs lumineux (brillent via le bloom → reperables dans le noir)
+        marqueurCrowbar = marqueurLumineux(POS_CROWBAR, new ColorRGBA(1f, 0.5f, 0f, 1f));   // orange
+        marqueurPile    = marqueurLumineux(POS_PILE,    new ColorRGBA(0.7f, 1f, 0.1f, 1f)); // vert-jaune
 
         enregistrerTouches();
     }
@@ -270,12 +374,19 @@ public class GameState extends BaseAppState {
                                                          new KeyTrigger(KeyInput.KEY_NUMPADENTER));
         app.getInputManager().addMapping("DigiFermer",   new KeyTrigger(KeyInput.KEY_ESCAPE));
 
+        // QTE (forcage porte 004) — fleches directionnelles
+        app.getInputManager().addMapping("QTE_Haut",   new KeyTrigger(KeyInput.KEY_UP));
+        app.getInputManager().addMapping("QTE_Bas",    new KeyTrigger(KeyInput.KEY_DOWN));
+        app.getInputManager().addMapping("QTE_Gauche", new KeyTrigger(KeyInput.KEY_LEFT));
+        app.getInputManager().addMapping("QTE_Droite", new KeyTrigger(KeyInput.KEY_RIGHT));
+
         app.getInputManager().addListener(actionListener,
                 "Avancer","Reculer","Gauche","Droite",
                 "Sprint","Accroupir","VisionNuit","Interagir","Sauter","VoirInventaire",
                 "Digi0","Digi1","Digi2","Digi3","Digi4",
                 "Digi5","Digi6","Digi7","Digi8","Digi9",
-                "DigiEffacer","DigiValider","DigiFermer");
+                "DigiEffacer","DigiValider","DigiFermer",
+                "QTE_Haut","QTE_Bas","QTE_Gauche","QTE_Droite");
     }
 
     private void onAction(String name, boolean isPressed, float tpf) {
@@ -308,6 +419,54 @@ public class GameState extends BaseAppState {
             return; // bloquer tout le reste
         }
 
+        // ── Dialogue Daniel ouvert — choix [1]/[2] + avancer ─────────────────
+        if (hud.isDialogueOuvert()) {
+            if (!isPressed) return;
+            if (etatDaniel == 3) { // blackout : choix reparer / saboter
+                if (name.equals("Digi1")) {
+                    choixReparer = true; etatDaniel = 4; pilesEnigme4 = 1; // Daniel donne 1 pile
+                    dialoguesCourants = new String[]{
+                        "Tiens, ma derniere pile 9V. Il en faut DEUX pour le generateur.",
+                        "Trouve la 2e pile (salle 3), puis remets le courant !"
+                    };
+                    enigme2DiagIdx = 0;
+                    hud.setLigneDialogue("Daniel", dialoguesCourants[0]);
+                    return;
+                } else if (name.equals("Digi2")) {
+                    choixReparer = false; etatDaniel = 4;
+                    dialoguesCourants = new String[]{
+                        "La methode forte, hein ? Va chercher le PIED DE BICHE en salle 1.",
+                        "Sabote le generateur, puis FORCE la porte de sortie (004)."
+                    };
+                    enigme2DiagIdx = 0;
+                    hud.setLigneDialogue("Daniel", dialoguesCourants[0]);
+                    return;
+                }
+            }
+            if (name.equals("Interagir")) avancerDialogueEnigme2();
+            return;
+        }
+
+        // ── QTE — forcage porte 004 (le prompt est affiche par update) ───────
+        if (qteActif) {
+            if (!isPressed) return;
+            joueur.setForward(false); joueur.setBackward(false);
+            joueur.setLeft(false);    joueur.setRight(false);
+            if (name.equals(sequenceQTE[qteIndex])) {
+                qteIndex++;
+                if (qteIndex >= sequenceQTE.length) {
+                    qteActif = false;
+                    doorManager.deverrouiller("004");
+                    doorManager.interagir();
+                    porte004Ouverte = true;
+                    demarrerFuite();
+                }
+            } else if (name.startsWith("QTE_") || name.equals("Interagir")) {
+                qteIndex = 0; // mauvaise touche → on recommence la sequence
+            }
+            return;
+        }
+
         switch (name) {
             case "Avancer"        -> joueur.setForward(isPressed);
             case "Reculer"        -> joueur.setBackward(isPressed);
@@ -320,90 +479,97 @@ public class GameState extends BaseAppState {
             case "VoirInventaire" -> { if (isPressed) hud.toggleInventaire(inventaire.getObjets()); }
             case "Interagir"      -> {
                 if (isPressed) {
-                    // 0. Dialogue NPC en cours → avancer / fermer
-                    if (hud.isDialogueOuvert()) {
-                        avancerDialogueEnigme2();
-                        return;
-                    }
-
-                    // 1. Raycast — boîtier digicode salle 1 (Noah)
+                    // 1. Raycast — digicode salle 1 + generateur salle 4
                     CollisionResults resultats = new CollisionResults();
                     Ray rayon = new Ray(app.getCamera().getLocation(), app.getCamera().getDirection());
                     app.getRootNode().collideWith(rayon, resultats);
                     if (resultats.size() > 0 && resultats.getClosestCollision().getDistance() < 3.0f) {
-                        String nomCible = resultats.getClosestCollision().getGeometry().getName();
-                        if ("Digicode_Interactif_Salle1".equals(nomCible)) {
-                            porteCibleDigicode = "001";
-                            codeEntree = "";
-                            hud.ouvrirDigicode();
-                            hud.updateDigicode("");
-                            app.getInputManager().setCursorVisible(false);
-                            System.out.println("[Digicode] Salle 1. Tapez " + CODE_E1);
+                        Geometry cible = resultats.getClosestCollision().getGeometry();
+                        if ("Digicode_Interactif_Salle1".equals(cible.getName())) {
+                            ouvrirDigicodePorte("001");
                             return;
                         }
+                        if (estGenerateur(cible)) { interagirGenerateur(); return; }
                     }
 
-                    // 2. Enigme 2 — Ramasser la clé à molette (proximité + accroupi obligatoire)
-                    if (!enigme2CleRamassee && spatialCle != null) {
-                        Vector3f pp = joueur.getCharacterControl().getPhysicsLocation();
-                        if (pp.distanceSquared(POS_CLE) < 2.5f * 2.5f) {
-                            if (joueur.isCrouch()) {
-                                enigme2CleRamassee = true;
-                                spatialCle.removeFromParent();
-                                spatialCle = null;
-                                inventaire.ajouter("Cle a molette");
-                                hud.setMessageInteraction("Cle a molette trouvee !");
-                                System.out.println("[Enigme2] Cle a molette ramassee !");
-                            } else {
-                                // Trop haut debout — signaler qu'il faut s'accroupir
-                                hud.setMessageInteraction("[C] S'accroupir pour attraper la cle !");
-                            }
-                            return;
+                    // 2. Enigme 2 — Ramasser la cle a molette (accroupi obligatoire)
+                    if (!enigme2CleRamassee && spatialCle != null && proche(POS_CLE, 2.5f)) {
+                        if (joueur.isCrouch()) {
+                            enigme2CleRamassee = true;
+                            spatialCle.removeFromParent();
+                            spatialCle = null;
+                            inventaire.ajouter("Cle a molette");
+                            hud.setMessageInteraction("Cle a molette trouvee ! Rapporte-la a Daniel.");
+                        } else {
+                            hud.setMessageInteraction("[C] S'accroupir pour attraper la cle !");
                         }
+                        return;
                     }
 
-                    // 3. Enigme 2 — Parler à Daniel (proximité)
-                    if (spatialDaniel != null) {
-                        Vector3f pp = joueur.getCharacterControl().getPhysicsLocation();
-                        if (pp.distanceSquared(POS_DANIEL) < 3.5f * 3.5f) {
-                            enigme2DiagIdx = 0;
-                            hud.ouvrirDialogue("Daniel", DIALOGUES_DANIEL[0]);
-                            System.out.println("[Enigme2] Dialogue avec Daniel commencé");
-                            return;
-                        }
+                    // 2b. Enigme 4 — Ramasser le pied de biche (salle 1, sabotage)
+                    if (spatialCrowbar != null && proche(POS_CROWBAR, 2.5f)) {
+                        spatialCrowbar.removeFromParent();
+                        spatialCrowbar = null;
+                        if (marqueurCrowbar != null) { marqueurCrowbar.removeFromParent(); marqueurCrowbar = null; }
+                        inventaire.ajouter("Pied de biche");
+                        hud.setMessageInteraction("Pied de biche recupere ! Sabote le generateur.");
+                        return;
                     }
 
-                    // 4. Porte verrouillee par proximité
+                    // 2c. Enigme 4 — Ramasser la 2e pile 9V (reparation)
+                    if (spatialPile != null && proche(POS_PILE, 2.5f)) {
+                        spatialPile.removeFromParent();
+                        spatialPile = null;
+                        if (marqueurPile != null) { marqueurPile.removeFromParent(); marqueurPile = null; }
+                        pilesEnigme4++;
+                        inventaire.ajouter("Pile 9V");
+                        hud.setMessageInteraction("Pile 9V ajoutee a l'inventaire (" + pilesEnigme4 + "/2) !");
+                        return;
+                    }
+
+                    // 3. Enigme 2/4 — Parler a Daniel (proximite)
+                    if (spatialDaniel != null && proche(POS_DANIEL, 3.5f)) {
+                        ouvrirDialogueDaniel();
+                        return;
+                    }
+
+                    // 4. Porte verrouillee par proximite
                     if (doorManager.isPorteProcheVerrouillee()) {
                         String numPorte = doorManager.getNumeroPorteProche();
                         if ("002".equals(numPorte)) {
-                            // Enigme 2 — réparer avec la clé à molette
-                            if (enigme2CleRamassee) {
-                                enigme2Resolue = true;
-                                doorManager.deverrouiller("002");
-                                hud.setMessageInteraction("Porte reparee avec la cle a molette !");
-                                System.out.println("[Enigme2] Porte 002 deverrouillee !");
-                            } else {
-                                hud.setMessageInteraction("[!] Il faut un outil pour reparer la porte...");
+                            // La porte 002 ne s'ouvre QUE via Daniel (la cle seule ne suffit pas).
+                            hud.setMessageInteraction(enigme2CleRamassee
+                                ? "[!] Rapporte la cle a Daniel pour qu'il ouvre !"
+                                : "[!] Porte cassee - trouve un outil pour Daniel");
+                        } else if ("004".equals(numPorte)) {
+                            if ((generateurRepare || generateurDetruit) && !qteActif) {
+                                qteActif = true; // combinaison pour ouvrir (les 2 voies)
+                                qteIndex = 0;
+                                hud.setMessageInteraction("");
+                            } else if (!generateurRepare && !generateurDetruit) {
+                                hud.setMessageInteraction("[!] Verrouillee : repare ou sabote le generateur");
                             }
                         } else {
-                            // Enigme 1 / 3 — digicode
-                            porteCibleDigicode = numPorte;
-                            codeEntree = "";
-                            hud.ouvrirDigicode();
-                            hud.updateDigicode("");
-                            app.getInputManager().setCursorVisible(false);
-                            System.out.println("[Digicode] Porte " + numPorte + ". Tapez le code.");
+                            ouvrirDigicodePorte(numPorte);
                         }
                     } else {
-                        // 5. Ouvrir porte normale (non verrouillée)
-                        boolean portOuverte = doorManager.interagir();
-                        // 6. Sinon ramasser objet (raycasting)
-                        if (!portOuverte) tenterDeRamasser();
+                        if (!doorManager.interagir()) tenterDeRamasser();
                     }
                 }
             }
         }
+    }
+
+    /** Ouvre le digicode pour une porte et affiche l'indice adapte. */
+    private void ouvrirDigicodePorte(String porte) {
+        porteCibleDigicode = porte;
+        codeEntree = "";
+        hud.ouvrirDigicode();
+        hud.updateDigicode("");
+        hud.setIndiceDigicode("001".equals(porte)
+            ? "Mot a decoder (tableau) :  A I D E"
+            : "Indice : la charade (salle sombre)");
+        app.getInputManager().setCursorVisible(false);
     }
 
     private void validerCodeDigicode() {
@@ -413,6 +579,7 @@ public class GameState extends BaseAppState {
         if (codeEntree.equals(bonCode)) {
             hud.setFeedbackDigicode("CODE ACCEPTE !", ColorRGBA.Green);
             doorManager.deverrouiller(porteCibleDigicode);
+            if ("001".equals(porteCibleDigicode)) enigme1Resolue = true;
 
             if ("003".equals(porteCibleDigicode)) {
                 // Enigme 3 résolue → rétablir l'éclairage, cacher la charade
@@ -432,14 +599,163 @@ public class GameState extends BaseAppState {
 
     // ── Enigme 2 — Dialogue Daniel ────────────────────────────────────────────
 
+    private void ouvrirDialogueDaniel() {
+        if (etatDaniel == 0) {
+            if (enigme2CleRamassee) {
+                etatDaniel = 1; // a la fin du dialogue → Daniel ouvre la porte 002
+                dialoguesCourants = new String[]{
+                    "Ah, la cle a molette ! Parfait, merci !",
+                    "Je te deverrouille la porte. Vas-y, file !"
+                };
+            } else {
+                dialoguesCourants = DIALOGUES_DANIEL;
+            }
+        } else if (etatDaniel == 2) {
+            dialoguesCourants = new String[]{"La porte est ouverte, vas-y ! Fais attention a toi."};
+        } else if (etatDaniel == 3) {
+            dialoguesCourants = new String[]{
+                "Le courant a saute ! Choisis :\n"
+              + "  1 - REPARER le generateur (2 piles 9V)\n"
+              + "  2 - SABOTER le labo (pied de biche)\n"
+              + "  (Appuie sur 1 ou 2)"
+            };
+        } else { // etatDaniel == 4 : rappel de la consigne
+            dialoguesCourants = choixReparer
+                ? new String[]{"Repare le generateur : il faut 2 piles 9V."}
+                : new String[]{"Recupere le pied de biche (salle 1) et sabote le generateur."};
+        }
+        enigme2DiagIdx = 0;
+        hud.ouvrirDialogue("Daniel", dialoguesCourants[0]);
+    }
+
     private void avancerDialogueEnigme2() {
         enigme2DiagIdx++;
-        if (enigme2DiagIdx < DIALOGUES_DANIEL.length) {
-            hud.setLigneDialogue("Daniel", DIALOGUES_DANIEL[enigme2DiagIdx]);
+        if (enigme2DiagIdx < dialoguesCourants.length) {
+            hud.setLigneDialogue("Daniel", dialoguesCourants[enigme2DiagIdx]);
+        } else if (etatDaniel == 3) {
+            enigme2DiagIdx = dialoguesCourants.length - 1; // reste sur le choix (1/2)
         } else {
             enigme2DiagIdx = 0;
             hud.fermerDialogue();
+            if (etatDaniel == 1) { // Daniel deverrouille la porte 002
+                doorManager.deverrouiller("002");
+                etatDaniel = 2;
+                enigme2Resolue = true;
+                hud.setMessageInteraction("Daniel a deverrouille la porte 002 !");
+            }
         }
+    }
+
+    /** Interaction avec le generateur (salle 4). */
+    private void interagirGenerateur() {
+        if (generateurRepare || generateurDetruit) return;
+        if (!generateurVu) {
+            generateurVu = true;
+            etatDaniel = 3; // Daniel propose desormais le choix reparer/saboter
+            hud.setMessageInteraction(""); // la directive s'affiche dans le cadre (cf update)
+            return;
+        }
+        if (choixReparer) {
+            if (pilesEnigme4 >= 2) {
+                generateurRepare = true; // la lumiere revient (blackout off)
+                hud.setMessageInteraction("Generateur REPARE ! Va a la porte 004 et entre la combinaison.");
+            } else {
+                hud.setMessageInteraction("Il manque une pile 9V (" + pilesEnigme4 + "/2).");
+            }
+        } else {
+            if (inventaire.contient("Pied de biche")) {
+                generateurDetruit = true; // on reste dans le noir
+                hud.setMessageInteraction("Generateur SABOTE ! Va a la porte 004 et entre la combinaison.");
+            } else {
+                hud.setMessageInteraction("Il te faut le PIED DE BICHE (salle 1).");
+            }
+        }
+    }
+
+    private boolean estGenerateur(Spatial s) {
+        while (s != null) {
+            if ("Generateur_Interactif".equals(s.getName())) return true;
+            s = s.getParent();
+        }
+        return false;
+    }
+
+    private boolean proche(Vector3f cible, float rayon) {
+        return joueur.getCharacterControl().getPhysicsLocation().distanceSquared(cible) < rayon * rayon;
+    }
+
+    private void declencherVictoire(String message) {
+        victoireEnCours = true;
+        finTimer = 4f;
+        alarmeActive = false;
+        fuiteSalle5 = false;
+        if (sirene != null) sirene.stop();
+        if (overlay != null) overlay.setColor(new ColorRGBA(1f, 1f, 1f, 1f));
+        hud.setMessageInteraction("");
+        hud.setCharade("");
+        hud.setObjectifEncadre(message);
+    }
+
+    /** Demarre la course de fuite (salle 5) : alarme rouge + sirene + chrono. */
+    private void demarrerFuite() {
+        fuiteSalle5  = true;
+        alarmeActive = true;
+        fuiteTimer   = 10f;
+        if (sirene != null) sirene.play();
+        hud.setMessageInteraction("");
+    }
+
+    /** Objectif courant (affiche dans le cadre HUD), selon l'avancee du jeu. */
+    private String calculerObjectif() {
+        if (fuiteSalle5)   return "FUIS ! Atteins le fond du labo (" + Math.max(0, (int) Math.ceil(fuiteTimer)) + "s)";
+        if (qteActif)      return "Combinaison : appuie sur " + nomsQTE[qteIndex];
+        if (generateurRepare || generateurDetruit)
+                           return "Porte de sortie (004) : entre la combinaison.";
+        if (enigme4Active) {
+            if (!generateurVu)  return "Coupure de courant ! Inspecte le generateur (salle 4).";
+            if (etatDaniel < 4) return "Retourne parler a Daniel (salle 2).";
+            if (choixReparer)   return "Trouve 2 piles 9V (" + pilesEnigme4 + "/2) puis repare le generateur.";
+            return inventaire.contient("Pied de biche")
+                ? "Sabote le generateur (salle 4)."
+                : "Recupere le pied de biche (salle 1).";
+        }
+        if (enigme3Resolue)     return "Avance vers la salle 4.";
+        if (enigme2Resolue)     return "Salle sombre : resous la charade. [N] vision nocturne.";
+        if (etatDaniel >= 1)    return "Daniel ouvre la porte... avance !";
+        if (enigme2CleRamassee) return "Rapporte la cle a molette a Daniel (salle 2).";
+        if (enigme1Resolue)     return "Salle 2 : trouve la cle (accroupi) et parle a Daniel.";
+        return "Salle 1 : ouvre le digicode de la porte et decode le mot avec le tableau.";
+    }
+
+    /** Petit cube lumineux (GlowColor → brille via bloom) pour reperer un objet. */
+    private Geometry marqueurLumineux(Vector3f pos, ColorRGBA couleur) {
+        Geometry g = new Geometry("Marqueur", new Box(0.12f, 0.12f, 0.12f));
+        Material mat = new Material(app.getAssetManager(), "Common/MatDefs/Misc/Unshaded.j3md");
+        mat.setColor("Color", couleur);
+        mat.setColor("GlowColor", couleur);
+        g.setMaterial(mat);
+        g.setLocalTranslation(pos.x, pos.y + 0.35f, pos.z);
+        app.getRootNode().attachChild(g);
+        return g;
+    }
+
+    /** Charge un prop GLB et le redimensionne a une taille cible (m), quelle que
+     *  soit son echelle native. Le ramassage reste gere par proximite. */
+    private Spatial chargerProp(String chemin, String nom, Vector3f pos, float tailleCible) {
+        Spatial s = app.getAssetManager().loadModel(chemin);
+        s.setName(nom);
+        app.getRootNode().attachChild(s);
+        app.getRootNode().updateGeometricState();
+        float maxDim = 1f;
+        com.jme3.bounding.BoundingVolume bv = s.getWorldBound();
+        if (bv instanceof com.jme3.bounding.BoundingBox) {
+            com.jme3.bounding.BoundingBox bb = (com.jme3.bounding.BoundingBox) bv;
+            maxDim = 2f * Math.max(bb.getXExtent(), Math.max(bb.getYExtent(), bb.getZExtent()));
+        }
+        if (maxDim < 1e-4f) maxDim = 1f;
+        s.setLocalScale(tailleCible / maxDim);
+        s.setLocalTranslation(pos);
+        return s;
     }
 
     // ── Enigme 2 — Mobilier salle 2 ──────────────────────────────────────────
@@ -625,6 +941,18 @@ public class GameState extends BaseAppState {
     @Override
     public void update(float tpf) {
         if (!isEnabled()) return;
+
+        // ── Fin de partie (victoire) — fige le jeu puis bascule sur WinState ──
+        if (victoireEnCours) {
+            finTimer -= tpf;
+            if (finTimer <= 0) {
+                app.getStateManager().detach(this);
+                app.getRootNode().detachAllChildren();
+                app.getStateManager().attach(new WinState());
+            }
+            return;
+        }
+
         joueur.update(tpf);
 
         Vector3f pos = joueur.getCharacterControl().getPhysicsLocation();
@@ -666,73 +994,93 @@ public class GameState extends BaseAppState {
             }
         }
 
-        // ── Enigme 3 — salle sombre ───────────────────────────────────────────
-        boolean inSalleSombre = !enigme3Resolue && pos.z > ROOM3_Z_MIN && pos.z < ROOM3_Z_MAX;
-        if (inSalleSombre) {
-            if (visionNocturne) {
-                hud.setCharade(CHARADE);
-            } else {
-                hud.setCharade("");
-                // Presque noir sans vision nocturne
-                ambiant.setColor(new ColorRGBA(0.03f, 0.03f, 0.03f, 1f));
-                // (hint "[N]" géré en fin de section hints ci-dessous)
-            }
-        } else if (!inSalleSombre && !enigme3Resolue && pos.z <= ROOM3_Z_MIN) {
-            hud.setCharade("");
-            if (!visionNocturne) ambiant.setColor(ColorRGBA.White.mult(AMBIENT_NORMAL));
-        } else if (enigme3Resolue) {
-            hud.setCharade("");
+        // ── Blackout GLOBAL / alarme (rendu via overlay, labo Unshaded) ──────
+        if (enigme3Resolue && !enigme4Active && pos.z > ROOM4_Z_MIN) {
+            enigme4Active = true; // une fois entre en salle 4 → coupure de courant
         }
+        boolean room3Noir      = !enigme3Resolue && pos.z > ROOM3_Z_MIN && pos.z < 64f;
+        boolean blackoutGlobal = enigme4Active && !generateurRepare; // TOUT le labo, persistant
+        boolean dansLeNoir     = room3Noir || blackoutGlobal;
+
+        if (alarmeActive) {
+            tempsAlarme += tpf;
+            float pulse = FastMath.pow(FastMath.sin(tempsAlarme * 6f), 2f); // 0..1
+            overlay.setColor(new ColorRGBA(0.45f + 0.55f * pulse, 0.03f, 0.03f, 1f)); // rouge clignotant
+        } else {
+            majTeinteEcran(dansLeNoir);
+        }
+
+        // ── Course de fuite (salle 5) : alarme rouge + chrono + drain batterie ─
+        if (fuiteSalle5 && !victoireEnCours) {
+            fuiteTimer -= tpf;
+            batterie.drainer(tpf * 20f); // la course pompe la batterie
+            if (pos.z > 130f) {                       // atteint le fond du labo (mur Z=136)
+                declencherVictoire("VOUS VOUS ECHAPPEZ DU LABORATOIRE !\nVICTOIRE !");
+            } else if (fuiteTimer <= 0f || batterie.isGameOver()) {
+                if (sirene != null) sirene.stop();
+                app.getStateManager().detach(this);
+                app.getRootNode().detachAllChildren();
+                app.getStateManager().attach(new GameOverState());
+                return;
+            }
+        }
+
+        // ── Charade salle 3 (texte vert) + banniere OBJECTIF dynamique ───────
+        hud.setCharade(room3Noir && visionNocturne ? CHARADE : "");
+        if (!victoireEnCours) hud.setObjectifEncadre(calculerObjectif());
 
         // ── Hints interaction (porte / NPC / objet) ───────────────────────────
         // Ne pas écraser le message si dialogue ou digicode est ouvert
-        if (!hud.isDialogueOuvert() && !hud.isDigicodeOuvert()) {
+        // Quand un panneau est ouvert, on n'affiche pas le hint central (evite la superposition)
+        if (hud.isDigicodeOuvert() || hud.isDialogueOuvert()) hud.setMessageInteraction("");
+
+        if (!hud.isDialogueOuvert() && !hud.isDigicodeOuvert() && !qteActif) {
             boolean porteProche = doorManager.update(pos);
-            if (porteProche) {
-                // Porte proche — verrouillée ou non ?
-                if (doorManager.isPorteProcheVerrouillee()) {
-                    String np = doorManager.getNumeroPorteProche();
-                    if ("002".equals(np)) {
-                        hud.setMessageInteraction(enigme2CleRamassee
-                            ? "[E] Reparer la porte avec la cle a molette"
-                            : "[!] La porte est cassee - trouvez un outil");
-                    } else {
-                        hud.setMessageInteraction("[E] Entrer le code Digicode");
-                    }
+            if (porteProche && doorManager.isPorteProcheVerrouillee()) {
+                String np = doorManager.getNumeroPorteProche();
+                if ("002".equals(np)) {
+                    hud.setMessageInteraction(enigme2CleRamassee
+                        ? "[!] Rapporte la cle a Daniel pour qu'il ouvre"
+                        : "[!] Porte cassee - trouve un outil pour Daniel");
+                } else if ("004".equals(np)) {
+                    hud.setMessageInteraction(
+                        (generateurDetruit && inventaire.contient("Pied de biche"))
+                            ? "[E] FORCER la porte (pied de biche)"
+                            : "[!] Verrouillee : generateur hors service");
                 } else {
-                    hud.setMessageInteraction("[E] Ouvrir la porte");
+                    hud.setMessageInteraction("[E] Entrer le code Digicode");
                 }
-            } else if (spatialDaniel != null
-                       && pos.distanceSquared(POS_DANIEL) < 3.5f * 3.5f) {
-                // Proximite Daniel
+            } else if (porteProche) {
+                hud.setMessageInteraction("[E] Ouvrir la porte");
+            } else if (spatialDaniel != null && proche(POS_DANIEL, 3.5f)) {
                 hud.setMessageInteraction("[E] Parler a Daniel");
-            } else if (!enigme2CleRamassee && spatialCle != null
-                       && pos.distanceSquared(POS_CLE) < 2.5f * 2.5f) {
-                // Proximite cle a molette — accroupi requis (sol sous le rack)
-                if (joueur.isCrouch()) {
-                    hud.setMessageInteraction("[E] Ramasser la cle a molette");
-                } else {
-                    hud.setMessageInteraction("[C] S'accroupir pour voir sous le rack...");
-                }
+            } else if (!enigme2CleRamassee && spatialCle != null && proche(POS_CLE, 2.5f)) {
+                hud.setMessageInteraction(joueur.isCrouch()
+                    ? "[E] Ramasser la cle a molette"
+                    : "[C] S'accroupir pour voir sous le rack...");
+            } else if (spatialCrowbar != null && proche(POS_CROWBAR, 2.5f)) {
+                hud.setMessageInteraction("[E] Ramasser le pied de biche");
+            } else if (spatialPile != null && proche(POS_PILE, 2.5f)) {
+                hud.setMessageInteraction("[E] Ramasser la pile 9V");
             } else {
-                // Raycasting passif (digicode salle 1 + objets ramassables)
                 CollisionResults r = new CollisionResults();
                 app.getRootNode().collideWith(
                     new Ray(app.getCamera().getLocation(), app.getCamera().getDirection()), r);
-                if (r.size() > 0 && r.getClosestCollision().getDistance() < 3f) {
-                    Geometry cible = r.getClosestCollision().getGeometry();
-                    if ("Digicode_Interactif_Salle1".equals(cible.getName())) {
-                        hud.setMessageInteraction("[E] Utiliser le Digicode");
-                    } else if (Boolean.TRUE.equals(cible.getUserData("Ramassable"))) {
-                        hud.setMessageInteraction("[E] Ramasser : " + cible.getName());
-                    } else {
-                        // Rien en vue — proposer vision nocturne si salle sombre
-                        boolean inSombre = !enigme3Resolue && pos.z > ROOM3_Z_MIN && pos.z < ROOM3_Z_MAX;
-                        hud.setMessageInteraction((inSombre && !visionNocturne) ? "[N] Activer la vision nocturne" : "");
-                    }
+                Geometry cible = (r.size() > 0 && r.getClosestCollision().getDistance() < 3f)
+                    ? r.getClosestCollision().getGeometry() : null;
+                if (cible != null && "Digicode_Interactif_Salle1".equals(cible.getName())) {
+                    hud.setMessageInteraction("[E] Utiliser le Digicode");
+                } else if (cible != null && estGenerateur(cible)) {
+                    if (!generateurVu)          hud.setMessageInteraction("[E] Inspecter le generateur");
+                    else if (generateurRepare)  hud.setMessageInteraction("");
+                    else if (etatDaniel < 4)    hud.setMessageInteraction(""); // doit d'abord voir Daniel
+                    else if (choixReparer)      hud.setMessageInteraction("[E] Reparer (" + pilesEnigme4 + "/2 piles)");
+                    else hud.setMessageInteraction(inventaire.contient("Pied de biche")
+                            ? "[E] SABOTER le generateur" : "[!] Il faut le pied de biche (salle 1)");
+                } else if (cible != null && Boolean.TRUE.equals(cible.getUserData("Ramassable"))) {
+                    hud.setMessageInteraction("[E] Ramasser : " + cible.getName());
                 } else {
-                    boolean inSombre = !enigme3Resolue && pos.z > ROOM3_Z_MIN && pos.z < ROOM3_Z_MAX;
-                    hud.setMessageInteraction((inSombre && !visionNocturne) ? "[N] Activer la vision nocturne" : "");
+                    hud.setMessageInteraction((dansLeNoir && !visionNocturne) ? "[N] Activer la vision nocturne" : "");
                 }
             }
         }
@@ -740,22 +1088,29 @@ public class GameState extends BaseAppState {
 
     // ─────────────────────────────────────────────────────────────────────────
 
+    /**
+     * Coupe ou restaure la lumiere du labo via l'overlay plein ecran (le labo est
+     * Unshaded → insensible aux lumieres 3D, donc on teinte l'image finale).
+     *  • noir sans vision nuit → quasi-noir
+     *  • noir + vision nuit    → teinte verte lisible
+     *  • lumiere normale       → blanc (aucun effet)
+     */
+    private void majTeinteEcran(boolean dansLeNoir) {
+        if (overlay == null) return;
+        if (dansLeNoir && !visionNocturne) {
+            overlay.setColor(new ColorRGBA(0.02f, 0.02f, 0.03f, 1f)); // quasi-noir
+        } else if (dansLeNoir && visionNocturne) {
+            overlay.setColor(new ColorRGBA(0.15f, 1.00f, 0.25f, 1f)); // vision nocturne
+        } else {
+            overlay.setColor(new ColorRGBA(1f, 1f, 1f, 1f));          // lumiere normale
+        }
+    }
+
     private void basculerVisionNuit() {
         visionNocturne = !visionNocturne;
-        if (visionNocturne) {
-            // Effet neon vert intense — ambiance "lunettes vision nocturne"
-            ambiant.setColor(new ColorRGBA(0f, 3.5f, 0.3f, 1f)); // vert vif
-            soleil.setColor(new ColorRGBA(0f, 1.2f, 0.1f, 1f));  // ombre verte douce
-            soleil.setDirection(new com.jme3.math.Vector3f(-0.3f, -0.8f, -0.2f).normalizeLocal());
-            app.getViewPort().setBackgroundColor(new ColorRGBA(0f, 0.04f, 0.01f, 1f));
-            hud.setVisionNuit(true);
-        } else {
-            ambiant.setColor(ColorRGBA.White.mult(AMBIENT_NORMAL));
-            soleil.setColor(ColorRGBA.White.mult(2.0f));
-            soleil.setDirection(new com.jme3.math.Vector3f(-0.5f, -1f, -0.3f).normalizeLocal());
-            app.getViewPort().setBackgroundColor(ColorRGBA.Black);
-            hud.setVisionNuit(false);
-        }
+        hud.setVisionNuit(visionNocturne);
+        // L'effet (vert / noir) est applique chaque frame par majTeinteEcran(),
+        // via le filtre overlay — compatible avec le labo Unshaded.
     }
 
     @Override
@@ -766,6 +1121,7 @@ public class GameState extends BaseAppState {
         app.getRootNode().removeLight(soleil);
         for (PointLight pl : pointLights) app.getRootNode().removeLight(pl);
         pointLights.clear();
+        if (fpp != null) { app.getViewPort().removeProcessor(fpp); fpp = null; }
         app.getFlyByCamera().setEnabled(false);
         app.getInputManager().setCursorVisible(true);
         app.getInputManager().removeListener(actionListener);
@@ -774,7 +1130,8 @@ public class GameState extends BaseAppState {
             "Sprint","Accroupir","VisionNuit","Interagir","Sauter","VoirInventaire",
             "Digi0","Digi1","Digi2","Digi3","Digi4",
             "Digi5","Digi6","Digi7","Digi8","Digi9",
-            "DigiEffacer","DigiValider","DigiFermer"
+            "DigiEffacer","DigiValider","DigiFermer",
+            "QTE_Haut","QTE_Bas","QTE_Gauche","QTE_Droite"
         }) {
             if (app.getInputManager().hasMapping(m))
                 app.getInputManager().deleteMapping(m);

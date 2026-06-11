@@ -53,10 +53,16 @@ public class HudManager {
     private Node       panneauDigicode;
     private BitmapText texteDigiSaisie;    // affiche "_ _ _ _" ou "2 7 _ _"
     private BitmapText texteDigiFeedback; // ERREUR / CODE ACCEPTE
+    private BitmapText texteDigiIndice;   // mot a decoder / charade
     private boolean    digicodeOuvert = false;
 
     // Overlay charade (vision nocturne room 3)
     private BitmapText texteCharade;
+
+    // Banniere objectif encadree (centre haut)
+    private Node       panneauObjectif;
+    private BitmapText texteObjectifEncadre;
+    private boolean    objectifVisible = false;
 
     // Panneau Dialogue NPC (Enigme 2 — Daniel)
     private Node       panneauDialogue;
@@ -87,7 +93,7 @@ public class HudManager {
         texteObjectif = new BitmapText(font, false);
         texteObjectif.setSize(taille * 1.1f);
         texteObjectif.setColor(ColorRGBA.White);
-        texteObjectif.setText("Objectif : Enfuyez-vous du laboratoire");
+        texteObjectif.setText(""); // objectif desormais affiche dans le cadre central
         texteObjectif.setLocalTranslation(20, hauteur - 20, 0);
         guiNode.attachChild(texteObjectif);
 
@@ -147,10 +153,8 @@ public class HudManager {
         Quad formeFond = new Quad(PANEL_W, PANEL_H);
         Geometry fond = new Geometry("FondInventaire", formeFond);
         Material matFond = new Material(am, "Common/MatDefs/Misc/Unshaded.j3md");
-        matFond.setColor("Color", new ColorRGBA(0.08f, 0.08f, 0.12f, 0.88f));
-        matFond.getAdditionalRenderState().setBlendMode(BlendMode.Alpha);
+        matFond.setColor("Color", new ColorRGBA(0.05f, 0.06f, 0.10f, 1f)); // opaque → texte lisible
         fond.setMaterial(matFond);
-        fond.setQueueBucket(Bucket.Transparent);
         panneauInventaire.attachChild(fond);
 
         // Titre orange
@@ -195,6 +199,32 @@ public class HudManager {
         texteCharade.setText("");
         texteCharade.setLocalTranslation(20, hauteurEcran * 0.82f, 3f);
         guiNode.attachChild(texteCharade);
+
+        construireObjectif();
+    }
+
+    /** Banniere OBJECTIF : cadre sombre borde cyan (centre haut), titre + contenu. */
+    private void construireObjectif() {
+        float w = largeurEcran * 0.54f, h = 78f;
+        float x = (largeurEcran - w) / 2f;
+        float y = hauteurEcran - 112f;
+        panneauObjectif = new Node("Objectif");
+        panneauObjectif.setLocalTranslation(x, y, 6f);
+        panneauObjectif.attachChild(quad(0, 0, w, h, 0.5f, new ColorRGBA(0.03f, 0.05f, 0.09f, 1f), false));
+        ColorRGBA c = new ColorRGBA(0f, 0.85f, 1f, 1f);
+        panneauObjectif.attachChild(quad(0,     h - 3, w, 3, 1f, c, false));
+        panneauObjectif.attachChild(quad(0,     0,     w, 3, 1f, c, false));
+        panneauObjectif.attachChild(quad(0,     0,     3, h, 1f, c, false));
+        panneauObjectif.attachChild(quad(w - 3, 0,     3, h, 1f, c, false));
+        // bandeau titre
+        panneauObjectif.attachChild(quad(3, h - 28, w - 6, 25, 0.8f, new ColorRGBA(0f, 0.30f, 0.42f, 1f), false));
+        BitmapText titre = txt("OBJECTIF", 1.05f, new ColorRGBA(0.6f, 1f, 1f, 1f));
+        titre.setLocalTranslation(w / 2f - titre.getLineWidth() / 2f, h - 7, 2f);
+        panneauObjectif.attachChild(titre);
+        // contenu
+        texteObjectifEncadre = txt("", 1.0f, new ColorRGBA(1f, 1f, 0.85f, 1f));
+        texteObjectifEncadre.setLocalTranslation(16, h - 40, 2f);
+        panneauObjectif.attachChild(texteObjectifEncadre);
     }
 
     // ── Construction panneau Digicode ─────────────────────────────────────────
@@ -210,9 +240,9 @@ public class HudManager {
 
         // Coordonnees RELATIVES au node (0,0 = bas-gauche du panneau)
 
-        // Fond sombre
+        // Fond sombre OPAQUE (pour que le texte soit bien lisible)
         Geometry fond = quad(0, 0, dw, dh, 0.5f,
-                new ColorRGBA(0.06f, 0.06f, 0.08f, 0.95f), true);
+                new ColorRGBA(0.04f, 0.05f, 0.08f, 1f), false);
         panneauDigicode.attachChild(fond);
 
         // Bordure cyan
@@ -226,6 +256,11 @@ public class HudManager {
                 new ColorRGBA(0f, 1f, 1f, 1f));
         titre.setLocalTranslation(dw / 2f - 120, dh - 28, 2f);
         panneauDigicode.attachChild(titre);
+
+        // Indice (mot a decoder / charade) — defini a l'ouverture
+        texteDigiIndice = txt("", 0.95f, new ColorRGBA(1f, 0.85f, 0.4f, 1f));
+        texteDigiIndice.setLocalTranslation(dw / 2f - 170, dh - 58, 2f);
+        panneauDigicode.attachChild(texteDigiIndice);
 
         // Saisie — utilise des points comme cases vides (pas de probleme de rendu)
         texteDigiSaisie = txt(". . . .", 2.5f, new ColorRGBA(0f, 1f, 1f, 1f));
@@ -395,6 +430,13 @@ public class HudManager {
         texteDigiFeedback.setColor(couleur);
     }
 
+    /** Affiche l'indice (mot a decoder / charade) dans le panneau digicode. */
+    public void setIndiceDigicode(String indice) {
+        if (texteDigiIndice == null) return;
+        texteDigiIndice.setText(indice == null ? "" : indice);
+        texteDigiIndice.setLocalTranslation(250f - texteDigiIndice.getLineWidth() / 2f, 240f - 58f, 2f);
+    }
+
     // ── Charade (vision nocturne room 3) ──────────────────────────────────────
 
     public void setCharade(String texte) {
@@ -410,6 +452,18 @@ public class HudManager {
     public void updateInventaire(String texte) { /* compatibilite */ }
 
     public void setMessageInteraction(String msg) { texteInteraction.setText(msg); }
+
+    /** Banniere objectif encadree (centre haut). Vide = cachee. */
+    public void setObjectifEncadre(String msg) {
+        if (msg == null || msg.isEmpty()) {
+            if (objectifVisible) { guiNode.detachChild(panneauObjectif); objectifVisible = false; }
+            return;
+        }
+        texteObjectifEncadre.setText(msg);
+        float w = largeurEcran * 0.54f;
+        texteObjectifEncadre.setLocalTranslation(w / 2f - texteObjectifEncadre.getLineWidth() / 2f, 78f - 40f, 2f);
+        if (!objectifVisible) { guiNode.attachChild(panneauObjectif); objectifVisible = true; }
+    }
 
     public void setOverlay(String msg) { /* non utilise */ }
 
@@ -431,6 +485,7 @@ public class HudManager {
         guiNode.detachChild(barreFond);
         guiNode.detachChild(barreVie);
         guiNode.detachChild(texteCharade);
+        if (objectifVisible)  guiNode.detachChild(panneauObjectif);
         if (inventaireOuvert) guiNode.detachChild(panneauInventaire);
         if (digicodeOuvert)   guiNode.detachChild(panneauDigicode);
         if (dialogueOuvert)   guiNode.detachChild(panneauDialogue);

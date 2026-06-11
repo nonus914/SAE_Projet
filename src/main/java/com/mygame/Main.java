@@ -13,7 +13,7 @@ public class Main extends SimpleApplication {
     public static void main(String[] args) {
         Main app = new Main();
         AppSettings settings = new AppSettings(true);
-        settings.setTitle("LAB-7");
+        settings.setTitle("Subject 27");
         settings.setResolution(1280, 720);
         settings.setFrameRate(60);
         app.setSettings(settings);

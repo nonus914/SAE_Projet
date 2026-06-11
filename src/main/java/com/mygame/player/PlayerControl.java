@@ -35,14 +35,20 @@ public class PlayerControl {
         this.nodeCamera = nodeCamera;
         this.hands = hands;
 
+        // Fix (Noah) : near-plane camera a 5cm au lieu de 1m → on ne voit plus a
+        // travers les murs / objets colles (utile aussi pour le lit au spawn).
+        float aspect = (float) camera.getWidth() / camera.getHeight();
+        camera.setFrustumPerspective(45f, aspect, 0.05f, 1000f);
+
         CapsuleCollisionShape capsule = new CapsuleCollisionShape(0.4f, 0.9f, 1);
         // stepHeight = 0.4 m → peut monter des marches normales (~17-20 cm chacune)
         characterControl = new CharacterControl(capsule, 0.6f); // 0.6m = monte les marches
         characterControl.setJumpSpeed(10f);
         characterControl.setFallSpeed(30f);
         characterControl.setGravity(30f);
-        // Spawn dans la Salle 1 (z≈3), face à Door_001 (z≈8)
-        characterControl.setPhysicsLocation(new Vector3f(0f, 2f, 3f));
+        // Spawn sur le lit, au fond de la Salle 1 (Z≈-6), face a la porte d'entree
+        // Door_001 (Z=16, +Z). L'orientation camera est fixee dans GameState.
+        characterControl.setPhysicsLocation(new Vector3f(0f, 1f, -7f));
 
         bullet.getPhysicsSpace().add(characterControl);
     }

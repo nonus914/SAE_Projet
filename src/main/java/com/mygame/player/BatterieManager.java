@@ -40,6 +40,13 @@ public class BatterieManager {
         System.out.println("BATTERIE RECHARGÉE !");
     }
 
+    /** Vide la batterie plus vite (ex : course de fuite finale). */
+    public void drainer(float secondes) {
+        if (gameOver) return;
+        batterieSec -= secondes;
+        if (batterieSec <= 0) { batterieSec = 0; gameOver = true; }
+    }
+
     public void rechargerProgressif(float tpf) {
         float gainParSeconde = tempsMaxInitial / 10f;
         batterieSec += gainParSeconde * tpf;
