@@ -273,9 +273,9 @@ public class HudManager {
         panneauDigicode.attachChild(texteDigiFeedback);
 
         // Hints
-        BitmapText hint = txt("0-9 saisir  |  RETOUR effacer  |  ENTREE valider",
+        BitmapText hint = txt("0-9 saisir  |  ENTREE valider  |  ECHAP ou BOUGER fermer",
                 0.85f, new ColorRGBA(0.6f, 0.6f, 0.6f, 1f));
-        hint.setLocalTranslation(dw / 2f - 160, 28, 2f);
+        hint.setLocalTranslation(dw / 2f - 200, 28, 2f);
         panneauDigicode.attachChild(hint);
     }
 

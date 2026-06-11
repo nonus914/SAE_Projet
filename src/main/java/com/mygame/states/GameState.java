@@ -52,6 +52,8 @@ public class GameState extends BaseAppState {
     private final List<PointLight> pointLights = new ArrayList<>();
     private FilterPostProcessor fpp; // post-traitement : glow neon (Bloom)
     private ColorOverlayFilter overlay; // coupe/restaure la lumiere du labo (Unshaded)
+    private Node handsRoot; // scene separee des mains (rendue par-dessus le monde)
+    private com.jme3.renderer.ViewPort handsView;
 
     // ── Piles ramassables (auto-contact) ─────────────────────────────────────
     private final Node pilesNode = new Node("Piles");
@@ -70,7 +72,7 @@ public class GameState extends BaseAppState {
     private float   digiCloseTimer    = -1f; // >0 = compte a rebours avant fermeture
 
     // ── Enigme 2 — Robot Daniel + Clé à molette (salle 2) ───────────────────
-    private static final Vector3f POS_DANIEL = new Vector3f( 3.0f, 1.0f, 25.0f); // R2 elargie : Z=14 → 25
+    private static final Vector3f POS_DANIEL = new Vector3f( 4.0f, 1.0f, 25.0f); // R2, decolle du mur
     // Cle a molette : au sol devant le rack mural (Y=0.2), dans l'empreinte X du rack
     // Visible & ramassable SEULEMENT en position accroupie (camera ~1.85m vs ~2.55m debout)
     private static final Vector3f POS_CLE    = new Vector3f(-8.6f, 0.2f, 36.0f); // R2 elargie : Z=21.5 → 36
@@ -225,14 +227,39 @@ public class GameState extends BaseAppState {
         generator.setLocalScale(1.5f);
         generator.setLocalTranslation(-9.0f, 0.813f, 68.5f); // R4 elargie : Z=43 → 68.5
         app.getRootNode().attachChild(generator);
+        // Hitbox solide : on ne peut plus rentrer dans le generateur
+        app.getRootNode().updateGeometricState();
+        com.jme3.bullet.collision.shapes.CollisionShape formeGen =
+                com.jme3.bullet.util.CollisionShapeFactory.createBoxShape(generator);
+        com.jme3.bullet.control.RigidBodyControl corpsGen =
+                new com.jme3.bullet.control.RigidBodyControl(formeGen, 0f);
+        generator.addControl(corpsGen);
+        bullet.getPhysicsSpace().add(corpsGen);
 
-        // Mains du joueur
+        // ── Mains du joueur — SCENE SEPAREE rendue par-dessus le monde ───────
+        // Les bras s'etendent ~2m devant la camera : dans la scene principale ils
+        // s'enfoncaient dans les murs/portes/Daniel des qu'on s'approchait. Ici ils
+        // sont rendus dans un viewport dedie qui ne nettoie QUE le depth buffer →
+        // toujours dessines DEVANT le monde, plus aucune penetration visuelle.
+        handsRoot = new Node("HandsRoot");
         Node nodeCamera = new Node("nodeCamera");
-        app.getRootNode().attachChild(nodeCamera);
+        handsRoot.attachChild(nodeCamera);
         Spatial hands = app.getAssetManager().loadModel("Models/player/arms_throwing.glb");
         hands.rotate(0.2f, 0, 0);
         hands.setLocalScale(0.04f);
         nodeCamera.attachChild(hands);
+        // Eclairage propre a la scene des mains (les lights du monde ne s'y appliquent pas)
+        AmbientLight lumMains = new AmbientLight();
+        lumMains.setColor(ColorRGBA.White.mult(1.0f));
+        handsRoot.addLight(lumMains);
+        DirectionalLight dirMains = new DirectionalLight();
+        dirMains.setDirection(new Vector3f(-0.3f, -1f, 0.3f).normalizeLocal());
+        dirMains.setColor(ColorRGBA.White.mult(0.8f));
+        handsRoot.addLight(dirMains);
+        handsView = app.getRenderManager().createMainView("MainsView", app.getCamera());
+        handsView.setClearFlags(false, true, false); // depth uniquement
+        handsView.attachScene(handsRoot);
+        handsRoot.updateGeometricState();
 
         joueur   = new PlayerControl(bullet, app.getCamera(), nodeCamera, hands);
         batterie = new BatterieManager(600f);
@@ -275,13 +302,25 @@ public class GameState extends BaseAppState {
         // ── Enigme 2 — Robot Daniel (PNJ salle 2) ────────────────────────────
         spatialDaniel = app.getAssetManager().loadModel("Models/props/robot_daniel.glb");
         spatialDaniel.setName("Daniel_Robot");
-        spatialDaniel.setLocalScale(1.8f);
-        // Face a l'entree de la salle 2 (joueur arrive de Z=16 vers Z=40)
-        // Rotation 180° autour de Y → regarde vers -Z = vers le joueur qui entre
-        spatialDaniel.rotate(0f, FastMath.PI, 0f);
+        // Plus grand que le joueur (yeux a 1.7m) → sa tete reste au-dessus de la
+        // camera, elle ne peut plus etre "coupee" par le near-plane en s'approchant.
+        spatialDaniel.setLocalScale(2.4f);
+        // Sur le cote de la salle 2 — rotation 180° par rapport a avant
+        spatialDaniel.rotate(0f, -FastMath.HALF_PI, 0f);
         spatialDaniel.setLocalTranslation(POS_DANIEL.x, 0f, POS_DANIEL.z);
         app.getRootNode().attachChild(spatialDaniel);
-        System.out.println("[Enigme2] Daniel chargé. Bounds : " + spatialDaniel.getWorldBound());
+        // Hitbox solide : noeud invisible + RigidBodyControl — EXACTEMENT le
+        // pattern des portes (DoorManager), qui bloque le joueur de facon fiable.
+        Node hitboxDaniel = new Node("Daniel_Hitbox");
+        hitboxDaniel.setLocalTranslation(POS_DANIEL.x, 1.5f, POS_DANIEL.z);
+        app.getRootNode().attachChild(hitboxDaniel);
+        com.jme3.bullet.control.RigidBodyControl rbcDaniel =
+                new com.jme3.bullet.control.RigidBodyControl(
+                        new com.jme3.bullet.collision.shapes.BoxCollisionShape(
+                                new Vector3f(0.7f, 1.5f, 0.7f)), 0f);
+        hitboxDaniel.addControl(rbcDaniel);
+        bullet.getPhysicsSpace().add(rbcDaniel);
+        System.out.println("[Enigme2] Daniel charge + hitbox (pattern portes).");
 
         // ── Enigme 2 — Clé à molette (cachée derrière l'armoire, salle 2) ────
         spatialCle = app.getAssetManager().loadModel("Models/props/cle_molette.glb");
@@ -298,12 +337,8 @@ public class GameState extends BaseAppState {
         creerMeublesRoom2();
 
         // ── Enigme 4 — pied de biche (salle 1) + 2e pile 9V (salle 3) ─────────
-        // Echelles a ajuster visuellement ; le ramassage est par proximite.
-        spatialCrowbar = chargerProp("Models/props/crowbar.glb",   "Pied_De_Biche", POS_CROWBAR, 1.0f); // ~1 m
-        spatialPile    = chargerProp("Models/props/9v_battery.glb", "Pile_9V_2",     POS_PILE,    0.4f); // ~40 cm (visible)
-        // Marqueurs lumineux (brillent via le bloom → reperables dans le noir)
-        marqueurCrowbar = marqueurLumineux(POS_CROWBAR, new ColorRGBA(1f, 0.5f, 0f, 1f));   // orange
-        marqueurPile    = marqueurLumineux(POS_PILE,    new ColorRGBA(0.7f, 1f, 0.1f, 1f)); // vert-jaune
+        // NB : le pied de biche et la pile 9V n'apparaissent qu'au moment du
+        // choix chez Daniel (enigme 4) — pas visibles avant (cf apparaitre*()).
 
         enregistrerTouches();
     }
@@ -392,31 +427,40 @@ public class GameState extends BaseAppState {
     private void onAction(String name, boolean isPressed, float tpf) {
         // Digicode intercept — si le panneau est ouvert, bloquer les autres actions
         if (hud.isDigicodeOuvert()) {
-            if (!isPressed) return;
-            if (name.startsWith("Digi")) {
-                if (name.equals("DigiEffacer")) {
-                    if (!codeEntree.isEmpty()) {
-                        codeEntree = codeEntree.substring(0, codeEntree.length() - 1);
-                        hud.updateDigicode(codeEntree);
-                        hud.setFeedbackDigicode("", ColorRGBA.White);
-                    }
-                } else if (name.equals("DigiValider")) {
-                    validerCodeDigicode();
-                } else if (name.equals("DigiFermer")) {
-                    hud.fermerDigicode();
-                    codeEntree = "";
-                } else {
-                    // Chiffre 0-9
-                    String chiffre = name.replace("Digi", "");
-                    if (codeEntree.length() < 4) {
-                        codeEntree += chiffre;
-                        System.out.println("[Digicode] Saisie : " + codeEntree);
-                        hud.updateDigicode(codeEntree);
-                        if (codeEntree.length() == 4) validerCodeDigicode();
+            // Bouger ferme le digicode → on peut s'eloigner et relire le tableau
+            boolean mouvement = name.equals("Avancer") || name.equals("Reculer")
+                             || name.equals("Gauche")  || name.equals("Droite")
+                             || name.equals("Sprint")  || name.equals("Sauter");
+            if (mouvement) {
+                hud.fermerDigicode();
+                codeEntree = "";
+                // pas de return : le mouvement est traite normalement ci-dessous
+            } else {
+                if (!isPressed) return;
+                if (name.startsWith("Digi")) {
+                    if (name.equals("DigiEffacer")) {
+                        if (!codeEntree.isEmpty()) {
+                            codeEntree = codeEntree.substring(0, codeEntree.length() - 1);
+                            hud.updateDigicode(codeEntree);
+                            hud.setFeedbackDigicode("", ColorRGBA.White);
+                        }
+                    } else if (name.equals("DigiValider")) {
+                        validerCodeDigicode();
+                    } else if (name.equals("DigiFermer")) {
+                        hud.fermerDigicode();
+                        codeEntree = "";
+                    } else {
+                        // Chiffre 0-9
+                        String chiffre = name.replace("Digi", "");
+                        if (codeEntree.length() < 4) {
+                            codeEntree += chiffre;
+                            hud.updateDigicode(codeEntree);
+                            if (codeEntree.length() == 4) validerCodeDigicode();
+                        }
                     }
                 }
+                return; // bloquer le reste tant que le panneau est ouvert
             }
-            return; // bloquer tout le reste
         }
 
         // ── Dialogue Daniel ouvert — choix [1]/[2] + avancer ─────────────────
@@ -425,6 +469,7 @@ public class GameState extends BaseAppState {
             if (etatDaniel == 3) { // blackout : choix reparer / saboter
                 if (name.equals("Digi1")) {
                     choixReparer = true; etatDaniel = 4; pilesEnigme4 = 1; // Daniel donne 1 pile
+                    apparaitrePile(); // la 2e pile apparait en salle 3 (anneau lumineux)
                     dialoguesCourants = new String[]{
                         "Tiens, ma derniere pile 9V. Il en faut DEUX pour le generateur.",
                         "Trouve la 2e pile (salle 3), puis remets le courant !"
@@ -434,6 +479,7 @@ public class GameState extends BaseAppState {
                     return;
                 } else if (name.equals("Digi2")) {
                     choixReparer = false; etatDaniel = 4;
+                    apparaitreCrowbar(); // le pied de biche apparait en salle 1 (anneau lumineux)
                     dialoguesCourants = new String[]{
                         "La methode forte, hein ? Va chercher le PIED DE BICHE en salle 1.",
                         "Sabote le generateur, puis FORCE la porte de sortie (004)."
@@ -485,10 +531,6 @@ public class GameState extends BaseAppState {
                     app.getRootNode().collideWith(rayon, resultats);
                     if (resultats.size() > 0 && resultats.getClosestCollision().getDistance() < 3.0f) {
                         Geometry cible = resultats.getClosestCollision().getGeometry();
-                        if ("Digicode_Interactif_Salle1".equals(cible.getName())) {
-                            ouvrirDigicodePorte("001");
-                            return;
-                        }
                         if (estGenerateur(cible)) { interagirGenerateur(); return; }
                     }
 
@@ -569,6 +611,9 @@ public class GameState extends BaseAppState {
         hud.setIndiceDigicode("001".equals(porte)
             ? "Mot a decoder (tableau) :  A I D E"
             : "Indice : la charade (salle sombre)");
+        // Stopper le mouvement en cours (sinon le joueur reste colle a la porte)
+        joueur.setForward(false); joueur.setBackward(false);
+        joueur.setLeft(false);    joueur.setRight(false);
         app.getInputManager().setCursorVisible(false);
     }
 
@@ -727,16 +772,32 @@ public class GameState extends BaseAppState {
         return "Salle 1 : ouvre le digicode de la porte et decode le mot avec le tableau.";
     }
 
-    /** Petit cube lumineux (GlowColor → brille via bloom) pour reperer un objet. */
-    private Geometry marqueurLumineux(Vector3f pos, ColorRGBA couleur) {
-        Geometry g = new Geometry("Marqueur", new Box(0.12f, 0.12f, 0.12f));
+    /** Anneau lumineux flottant AU-DESSUS d'un objet (pas dessus) — repere visuel. */
+    private Geometry anneauLumineux(Vector3f pos, ColorRGBA couleur) {
+        Geometry g = new Geometry("Anneau",
+                new com.jme3.scene.shape.Torus(24, 8, 0.04f, 0.45f));
         Material mat = new Material(app.getAssetManager(), "Common/MatDefs/Misc/Unshaded.j3md");
         mat.setColor("Color", couleur);
-        mat.setColor("GlowColor", couleur);
+        mat.setColor("GlowColor", couleur); // halo via bloom → visible dans le noir
         g.setMaterial(mat);
-        g.setLocalTranslation(pos.x, pos.y + 0.35f, pos.z);
+        g.rotate(FastMath.HALF_PI, 0, 0); // a plat (horizontal)
+        g.setLocalTranslation(pos.x, pos.y + 1.1f, pos.z);
         app.getRootNode().attachChild(g);
         return g;
+    }
+
+    /** Fait apparaitre la 2e pile 9V (choix REPARER chez Daniel). */
+    private void apparaitrePile() {
+        if (spatialPile != null) return;
+        spatialPile  = chargerProp("Models/props/9v_battery.glb", "Pile_9V_2", POS_PILE, 0.4f);
+        marqueurPile = anneauLumineux(POS_PILE, new ColorRGBA(0.7f, 1f, 0.1f, 1f)); // vert-jaune
+    }
+
+    /** Fait apparaitre le pied de biche (choix SABOTER chez Daniel). */
+    private void apparaitreCrowbar() {
+        if (spatialCrowbar != null) return;
+        spatialCrowbar  = chargerProp("Models/props/crowbar.glb", "Pied_De_Biche", POS_CROWBAR, 1.0f);
+        marqueurCrowbar = anneauLumineux(POS_CROWBAR, new ColorRGBA(1f, 0.5f, 0f, 1f)); // orange
     }
 
     /** Charge un prop GLB et le redimensionne a une taille cible (m), quelle que
@@ -955,6 +1016,12 @@ public class GameState extends BaseAppState {
 
         joueur.update(tpf);
 
+        // Scene des mains (viewport separe) : a mettre a jour manuellement
+        if (handsRoot != null) {
+            handsRoot.updateLogicalState(tpf);
+            handsRoot.updateGeometricState();
+        }
+
         Vector3f pos = joueur.getCharacterControl().getPhysicsLocation();
 
         // Batterie
@@ -1034,6 +1101,10 @@ public class GameState extends BaseAppState {
         // Quand un panneau est ouvert, on n'affiche pas le hint central (evite la superposition)
         if (hud.isDigicodeOuvert() || hud.isDialogueOuvert()) hud.setMessageInteraction("");
 
+        // Anneaux lumineux : rotation lente (repere visuel au-dessus des objets)
+        if (marqueurPile != null)    marqueurPile.rotate(0, 0, tpf * 2f);
+        if (marqueurCrowbar != null) marqueurCrowbar.rotate(0, 0, tpf * 2f);
+
         if (!hud.isDialogueOuvert() && !hud.isDigicodeOuvert() && !qteActif) {
             boolean porteProche = doorManager.update(pos);
             if (porteProche && doorManager.isPorteProcheVerrouillee()) {
@@ -1068,9 +1139,7 @@ public class GameState extends BaseAppState {
                     new Ray(app.getCamera().getLocation(), app.getCamera().getDirection()), r);
                 Geometry cible = (r.size() > 0 && r.getClosestCollision().getDistance() < 3f)
                     ? r.getClosestCollision().getGeometry() : null;
-                if (cible != null && "Digicode_Interactif_Salle1".equals(cible.getName())) {
-                    hud.setMessageInteraction("[E] Utiliser le Digicode");
-                } else if (cible != null && estGenerateur(cible)) {
+                if (cible != null && estGenerateur(cible)) {
                     if (!generateurVu)          hud.setMessageInteraction("[E] Inspecter le generateur");
                     else if (generateurRepare)  hud.setMessageInteraction("");
                     else if (etatDaniel < 4)    hud.setMessageInteraction(""); // doit d'abord voir Daniel
@@ -1122,6 +1191,7 @@ public class GameState extends BaseAppState {
         for (PointLight pl : pointLights) app.getRootNode().removeLight(pl);
         pointLights.clear();
         if (fpp != null) { app.getViewPort().removeProcessor(fpp); fpp = null; }
+        if (handsView != null) { app.getRenderManager().removeMainView(handsView); handsView = null; handsRoot = null; }
         app.getFlyByCamera().setEnabled(false);
         app.getInputManager().setCursorVisible(true);
         app.getInputManager().removeListener(actionListener);

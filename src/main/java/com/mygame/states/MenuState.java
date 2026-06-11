@@ -61,44 +61,40 @@ public class MenuState extends BaseAppState {
         // ── Fond plein ecran ──────────────────────────────────────────────────
         uiNode.attachChild(fondEcran(W, H, "Interface/bg/menu.png"));
 
-        // ── Layout centre (meme largeur que dans le design Aymen) ────────────
-        btnW = Math.min(830f, W - 100f);
+        // ── Layout centre — maquette : colonne ~66% de l'ecran, aeree ────────
+        btnW = Math.min(660f, W - 120f);
+        btnH = 50f;
         btnX = (W - btnW) / 2f;
-        float contentTop = H * 0.85f;
+        float contentTop = H * 0.86f;
 
-        // ── Header (cadre avec infos) ─────────────────────────────────────────
-        float headerH = 165f;
+        // ── Header : cadre fin cyan, fond sombre translucide ──────────────────
+        float headerH = 150f;
         float headerY = contentTop - headerH;
         uiNode.attachChild(boite(btnX, headerY, btnW, headerH,
-                new ColorRGBA(0.05f, 0.07f, 0.09f, 0.88f)));
+                new ColorRGBA(0.03f, 0.05f, 0.07f, 0.80f)));
 
-        // Texte header — ASCII pur, pas de caracteres speciaux
-        BitmapText subject = txt(font, "SUBJECT: 27", 1.0f, CYN);
-        centrer(subject, W, headerY + headerH - 32, 3f);
+        // Titre : cyan vif, grand
+        BitmapText subject = txt(font, "SUBJECT: 27", 1.6f, new ColorRGBA(0f, 0.95f, 1f, 1f));
+        centrer(subject, W, headerY + headerH - 34, 3f);
         uiNode.attachChild(subject);
 
-        BitmapText sequence = txt(font, "SEQUENCE D'EVEIL  -  SUJET 27", 1.2f, BLANC);
-        centrer(sequence, W, headerY + headerH - 72, 3f);
+        // Sous-titre : blanc, lettres espacees (style cyber de la maquette)
+        BitmapText sequence = txt(font, espacer("SEQUENCE D'EVEIL - SUJET 27"), 1.0f, BLANC);
+        centrer(sequence, W, headerY + headerH - 78, 3f);
         uiNode.attachChild(sequence);
 
-        // Ligne separatrice (tirets ASCII)
-        BitmapText sep = txt(font,
-            "- - - - - - - - - - - - - - - - - - - - - - - - - - - -",
-            0.8f, CYN_D);
-        centrer(sep, W, headerY + headerH - 108, 3f);
-        uiNode.attachChild(sep);
-
-        BitmapText techL = txt(font, "STBL_INIT_0.94", 0.8f, CYN_D);
-        techL.setLocalTranslation(btnX + 15, headerY + 14, 3f);
+        // Infos techniques discretes (coins bas du header)
+        BitmapText techL = txt(font, "STBL_INIT_0.94", 0.7f, CYN_D);
+        techL.setLocalTranslation(btnX + 14, headerY + 22, 3f);
         uiNode.attachChild(techL);
 
-        BitmapText techR = txt(font, "LOC: SEC_B_WNG_04", 0.8f, CYN_D);
-        techR.setLocalTranslation(btnX + btnW - 158, headerY + 14, 3f);
+        BitmapText techR = txt(font, "LOC: SEC_B_WNG_04", 0.7f, CYN_D);
+        techR.setLocalTranslation(btnX + btnW - 150, headerY + 22, 3f);
         uiNode.attachChild(techR);
 
-        // ── Boutons (chacun dans sa boite, comme Aymen) ───────────────────────
-        float gap = 12f;
-        btnJouerY     = headerY - gap - btnH;
+        // ── Boutons : fins, sombres, lettres espacees ─────────────────────────
+        float gap = 16f;
+        btnJouerY     = headerY - 30f - btnH;
         btnCommandesY = btnJouerY - gap - btnH;
         btnQuitterY   = btnCommandesY - gap - btnH;
 
@@ -139,24 +135,33 @@ public class MenuState extends BaseAppState {
 
     // ── Helpers visuels ───────────────────────────────────────────────────────
 
-    /** Bouton avec fond sombre + bordure cyan + texte centre, style Aymen. */
+    /** Bouton fin : fond sombre quasi opaque, bordure cyan, lettres espacees. */
     private Node boutonBoite(BitmapFont font, String label,
                              float x, float y, float w, float h,
                              ColorRGBA couleur) {
         Node n = new Node("Btn_" + label);
-        n.attachChild(boite(x, y, w, h, new ColorRGBA(0.07f, 0.07f, 0.09f, 0.92f)));
+        n.attachChild(boite(x, y, w, h, new ColorRGBA(0.04f, 0.05f, 0.07f, 0.92f)));
 
-        BitmapText t = txt(font, label, 1.3f, couleur);
+        BitmapText t = txt(font, espacer(label), 1.1f, couleur);
         t.setLocalTranslation(x + w / 2f - t.getLineWidth() / 2f,
                               y + h / 2f + t.getSize() * 0.4f, 3f);
         n.attachChild(t);
         return n;
     }
 
-    /** Fond rectangulaire avec bordure cyan. */
+    /** "JOUER" -> "J O U E R" (lettres espacees, style cyber de la maquette). */
+    private static String espacer(String s) {
+        StringBuilder sb = new StringBuilder();
+        for (int i = 0; i < s.length(); i++) {
+            sb.append(s.charAt(i));
+            if (i < s.length() - 1) sb.append(' ');
+        }
+        return sb.toString();
+    }
+
+    /** Fond rectangulaire avec bordure cyan (style translucide d'origine). */
     private Node boite(float x, float y, float w, float h, ColorRGBA fond) {
         Node n = new Node("box");
-        // Fond
         Geometry bg = geo("bg", x, y, w, h, 0.5f, fond, true);
         n.attachChild(bg);
         // Bordure (4 barres)
@@ -180,8 +185,8 @@ public class MenuState extends BaseAppState {
         if (alpha) mat.getAdditionalRenderState().setBlendMode(
                 com.jme3.material.RenderState.BlendMode.Alpha);
         g.setMaterial(mat);
-        if (alpha) g.setQueueBucket(
-                com.jme3.renderer.queue.RenderQueue.Bucket.Transparent);
+        // IMPORTANT : on reste dans le bucket Gui (pas Transparent) → le tri par Z
+        // avec les textes fonctionne, et le blending rend le fond translucide.
         g.setLocalTranslation(x, y, z);
         return g;
     }
@@ -222,11 +227,14 @@ public class MenuState extends BaseAppState {
 
     private void construirePanneauCommandes(BitmapFont font, int W, int H) {
         panneauCommandes = new Node("Commandes");
+        // Z +10 : passe DEVANT les textes du menu (sinon ils transparaissent)
+        panneauCommandes.setLocalTranslation(0, 0, 10f);
         float pw = 520f, ph = 340f;
         float px = (W - pw) / 2f, py = (H - ph) / 2f;
 
+        // Fond presque opaque -> texte des commandes lisible (Z+10 = devant le menu)
         panneauCommandes.attachChild(boite(px, py, pw, ph,
-                new ColorRGBA(0.05f, 0.07f, 0.09f, 0.95f)));
+                new ColorRGBA(0.05f, 0.07f, 0.09f, 0.97f)));
 
         BitmapText titre = txt(font, "COMMANDES", 1.2f, CYN);
         centrer(titre, W, py + ph - 28, 3f);
@@ -264,7 +272,8 @@ public class MenuState extends BaseAppState {
 
     private void lancerJeu() {
         app.getStateManager().detach(this);
-        app.getStateManager().attach(new GameState());
+        // Video d'intro (Aymen) ; le labo se precharge pendant -> jeu des la fin
+        app.getStateManager().attach(new VideoIntroState());
     }
 
     @Override

@@ -42,6 +42,12 @@ project(":assets") {
             languageVersion = JavaLanguageVersion.of(21)
         }
     }
+
+    // Les assets (jpg/glb/ogg) sont deja compresses : les stocker sans
+    // recompression rend la creation du jar d'assets quasi instantanee.
+    tasks.withType(Jar).configureEach {
+        entryCompression = org.gradle.api.tasks.bundling.ZipEntryCompression.STORED
+    }
 }
 
 dependencies {

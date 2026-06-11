@@ -27,6 +27,8 @@ public class Main extends SimpleApplication {
         setDisplayFps(false);        // cache le compteur FPS
         flyCam.setEnabled(false);
         inputManager.setCursorVisible(true);
+        // Menu d'abord (JOUER / COMMANDES) ; JOUER lance la video d'intro,
+        // pendant laquelle le labo se precharge -> le jeu demarre des la fin.
         stateManager.attach(new MenuState());
     }
 

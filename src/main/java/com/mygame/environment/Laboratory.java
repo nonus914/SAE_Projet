@@ -82,42 +82,28 @@ public class Laboratory {
         objetTableau.setLocalTranslation(new Vector3f(2.0f, 1.5f, -3.0f));
         rootNode.attachChild(objetTableau);
 
-        // Digicode salle 1
-        com.jme3.scene.shape.Box boiteDigicode = new com.jme3.scene.shape.Box(0.1f, 0.15f, 0.05f);
-        Geometry objetDigicode = new Geometry("Digicode_Interactif_Salle1", boiteDigicode);
-        Material matDigicode = new Material(am, "Common/MatDefs/Misc/Unshaded.j3md");
-        matDigicode.setColor("Color", ColorRGBA.DarkGray);
-        objetDigicode.setMaterial(matDigicode);
-        objetDigicode.setLocalTranslation(new Vector3f(2.5f, 1.2f, -3.0f));
-        RigidBodyControl rbcDigicode = new RigidBodyControl(
-                CollisionShapeFactory.createBoxShape(objetDigicode), 0f);
-        objetDigicode.addControl(rbcDigicode);
-        bullet.getPhysicsSpace().add(rbcDigicode);
-        rootNode.attachChild(objetDigicode);
+        // (Le boitier digicode mural a ete supprime : le digicode s'ouvre
+        //  directement en s'approchant de la porte verrouillee + touche E.)
 
         return doorManager;
     }
 
     // ─────────────────────────────────────────────────────────────────────────
-    // Correction des materiaux — labo BAKED, ambiance sombre + code couleur salle.
-    //   • Murs/sols bakes (BKM_*) → texture de Blender, legerement assombrie.
-    //   • Neons / LED            → couleur de LEUR SALLE (R1 bleu fonce … R5 violet)
-    //                              + GlowColor → halo via BloomFilter (GlowMode.Objects).
-    //   • Metal / beton nu       → couleur du modele, bien assombrie.
+    // Materiaux — style INDUSTRIEL BRUT (textures procedurales tuilables).
+    //   • Murs/plafonds → beton banche use   • Sols → dalle beton usee
+    //   • Poutres/piliers → acier peint rive • Tuyaux → metal rouille
+    //   • Gaines → tole galva                • Portes → acier brosse
+    //   • Neons/LED → couleur de LEUR SALLE + GlowColor (halo bloom)
+    //   Teintes sombres + legere couleur de salle → l'ambiance neon est gardee.
     // ─────────────────────────────────────────────────────────────────────────
 
-    private static final float BAKED_DIM = 0.60f; // assombrit les textures bakees (murs/sols)
-    private static final float FLAT_DIM  = 0.30f; // assombrit le metal/beton sans texture
+    private final java.util.Map<String, com.jme3.texture.Texture> texCache = new java.util.HashMap<>();
+    private final java.util.Set<com.jme3.scene.Mesh> uvAjustes = new java.util.HashSet<>();
 
     private void corrigerMateriaux(Spatial s, AssetManager am) {
         if (s instanceof Geometry) {
             Geometry geo = (Geometry) s;
-            // Z monde (centre de la bbox) → determine la salle.
-            // Valide : appele apres updateGeometricState().
-            float z = geo.getWorldBound() != null
-                    ? geo.getWorldBound().getCenter().z
-                    : geo.getWorldTranslation().z;
-            geo.setMaterial(versUnshadedBaked(geo.getMaterial(), z, am));
+            geo.setMaterial(choisirMateriau(geo, am));
         }
         if (s instanceof Node) {
             for (Spatial enfant : new ArrayList<>(((Node) s).getChildren())) {
@@ -139,52 +125,104 @@ public class Laboratory {
         return              new ColorRGBA(0.60f, 0.12f, 1.00f, 1f);  // R5 violet
     }
 
-    /**
-     * Materiau PBR (glTF) → Unshaded, en respectant l'ambiance sombre :
-     *  • texture bakee → ColorMap assombri par BAKED_DIM
-     *  • neon / LED    → couleur de la salle + GlowColor (halo)
-     *  • ecran         → garde sa teinte + leger halo
-     *  • metal / beton → couleur du modele assombrie par FLAT_DIM
-     */
-    private static Material versUnshadedBaked(Material src, float z, AssetManager am) {
-        if (src != null) {
-            // 1. Surface bakee : on garde la texture, assombrie pour le mood.
-            MatParamTexture tex = src.getTextureParam("BaseColorMap");
-            if (tex != null && tex.getTextureValue() != null) {
-                Material mat = new Material(am, "Common/MatDefs/Misc/Unshaded.j3md");
-                mat.setTexture("ColorMap", tex.getTextureValue());
-                mat.setColor("Color", new ColorRGBA(BAKED_DIM, BAKED_DIM, BAKED_DIM, 1f));
-                return mat;
-            }
-            MatParam base = src.getParam("BaseColor");
-            if (base != null && base.getValue() instanceof ColorRGBA) {
-                ColorRGBA c  = (ColorRGBA) base.getValue();
-                String    mn = src.getName() == null ? "" : src.getName().toLowerCase();
+    /** Choisit le materiau d'une geometrie selon son nom / son materiau glTF. */
+    private Material choisirMateriau(Geometry geo, AssetManager am) {
+        Material src = geo.getMaterial();
+        String gn = geo.getName() == null ? "" : geo.getName().toLowerCase();
+        String mn = (src != null && src.getName() != null) ? src.getName().toLowerCase() : "";
+        float z = geo.getWorldBound() != null
+                ? geo.getWorldBound().getCenter().z
+                : geo.getWorldTranslation().z;
 
-                // 2. Neons / LED → couleur de LA SALLE + halo.
-                if (mn.contains("emit") || mn.contains("neon") || mn.contains("led")) {
-                    ColorRGBA col = couleurNeonSalle(z);
-                    Material mat = new Material(am, "Common/MatDefs/Misc/Unshaded.j3md");
-                    mat.setColor("Color", col);
-                    mat.setColor("GlowColor", col); // halo via BloomFilter (GlowMode.Objects)
-                    return mat;
-                }
-
-                // 3. Ecrans → gardent leur teinte propre + leger halo.
-                if (mn.contains("screen")) {
-                    Material mat = new Material(am, "Common/MatDefs/Misc/Unshaded.j3md");
-                    mat.setColor("Color", c);
-                    mat.setColor("GlowColor", c);
-                    return mat;
-                }
-
-                // 4. Signalisation peinte (warning/hazard) : vive, sans halo.
-                boolean vif = mn.contains("warning") || mn.contains("hazard");
-                float k = vif ? 1.0f : FLAT_DIM; // reste : metal/beton assombri
-                return unshaded(am, new ColorRGBA(c.r * k, c.g * k, c.b * k, c.a));
-            }
+        // 1. Neons / LED → couleur de LA SALLE + halo bloom.
+        if (mn.contains("emit") || mn.contains("neon") || mn.contains("led")) {
+            ColorRGBA col = couleurNeonSalle(z);
+            Material mat = new Material(am, "Common/MatDefs/Misc/Unshaded.j3md");
+            mat.setColor("Color", col);
+            mat.setColor("GlowColor", col);
+            return mat;
         }
-        return unshaded(am, new ColorRGBA(0.15f, 0.15f, 0.15f, 1f)); // fallback sombre
+        // 2. Ecrans → teinte d'origine + halo.
+        if (mn.contains("screen")) {
+            ColorRGBA c = couleurBase(src, new ColorRGBA(0f, 0.45f, 0.35f, 1f));
+            Material mat = new Material(am, "Common/MatDefs/Misc/Unshaded.j3md");
+            mat.setColor("Color", c);
+            mat.setColor("GlowColor", c);
+            return mat;
+        }
+        // 3. Signalisation peinte : vive, sans halo.
+        if (mn.contains("warning") || mn.contains("hazard"))
+            return unshaded(am, couleurBase(src, ColorRGBA.Yellow));
+        // 4. Cables : noir mat.
+        if (mn.contains("cable"))
+            return unshaded(am, new ColorRGBA(0.05f, 0.05f, 0.06f, 1f));
+
+        // ── Surfaces texturees ────────────────────────────────────────────────
+        // Les murs prennent une legere teinte de leur salle (continuite neon).
+        ColorRGBA salle  = couleurNeonSalle(z);
+        ColorRGBA teinteMur = new ColorRGBA(0.40f + salle.r * 0.12f,
+                                            0.40f + salle.g * 0.12f,
+                                            0.40f + salle.b * 0.12f, 1f);
+
+        if (gn.startsWith("floor") || mn.contains("wornfloor"))
+            return texture(am, geo, "beton_sol.png", 3.0f, new ColorRGBA(0.52f, 0.52f, 0.54f, 1f));
+        if (gn.startsWith("ceiling"))
+            return texture(am, geo, "beton_mur.png", 3.0f, new ColorRGBA(0.26f, 0.26f, 0.30f, 1f));
+        if (gn.startsWith("wall") || mn.startsWith("bkm")
+                || mn.contains("wallconcrete") || mn.contains("damagedwall"))
+            return texture(am, geo, "beton_mur.png", 2.5f, teinteMur);
+        if (gn.startsWith("pipe") || mn.contains("rusty") || mn.contains("pipeorange"))
+            return texture(am, geo, "metal_rouille.png", 1.0f, new ColorRGBA(0.60f, 0.60f, 0.60f, 1f));
+        if (gn.startsWith("duct") || gn.startsWith("vgrate") || mn.contains("vent"))
+            return texture(am, geo, "tole_galva.png", 1.2f, new ColorRGBA(0.45f, 0.46f, 0.50f, 1f));
+        if (gn.startsWith("door") || gn.startsWith("djamb") || gn.startsWith("dlintel")
+                || gn.startsWith("dhaz") || gn.startsWith("exit") || mn.contains("doorframe"))
+            return texture(am, geo, "metal_porte.png", 1.5f, new ColorRGBA(0.52f, 0.54f, 0.58f, 1f));
+        if (gn.startsWith("skim_"))
+            return unshaded(am, new ColorRGBA(0.10f, 0.10f, 0.12f, 1f)); // plinthe sombre
+        // Structure metallique par defaut : poutres, piliers, supports, gantry...
+        return texture(am, geo, "acier_peint.png", 1.5f, new ColorRGBA(0.42f, 0.43f, 0.47f, 1f));
+    }
+
+    /** BaseColor du materiau glTF d'origine, ou couleur par defaut. */
+    private static ColorRGBA couleurBase(Material src, ColorRGBA defaut) {
+        if (src != null) {
+            MatParam p = src.getParam("BaseColor");
+            if (p != null && p.getValue() instanceof ColorRGBA) return (ColorRGBA) p.getValue();
+        }
+        return defaut;
+    }
+
+    private com.jme3.texture.Texture chargerTexture(AssetManager am, String nom) {
+        return texCache.computeIfAbsent(nom, n -> {
+            com.jme3.texture.Texture t = am.loadTexture("Textures/labo/" + n);
+            t.setWrap(com.jme3.texture.Texture.WrapMode.Repeat);
+            return t;
+        });
+    }
+
+    /**
+     * Materiau texture (Unshaded) avec repetition adaptee a la taille REELLE de
+     * la surface : une tuile = tailleTuileM metres → pas de texture etiree.
+     */
+    private Material texture(AssetManager am, Geometry geo, String nom,
+                             float tailleTuileM, ColorRGBA teinte) {
+        Material mat = new Material(am, "Common/MatDefs/Misc/Unshaded.j3md");
+        mat.setTexture("ColorMap", chargerTexture(am, nom));
+        mat.setColor("Color", teinte); // multiplie la texture → ambiance sombre
+        com.jme3.scene.Mesh mesh = geo.getMesh();
+        if (mesh != null && uvAjustes.add(mesh)
+                && geo.getWorldBound() instanceof com.jme3.bounding.BoundingBox) {
+            com.jme3.bounding.BoundingBox bb = (com.jme3.bounding.BoundingBox) geo.getWorldBound();
+            float[] dims = { bb.getXExtent() * 2f, bb.getYExtent() * 2f, bb.getZExtent() * 2f };
+            java.util.Arrays.sort(dims);
+            float su = Math.max(1f, Math.round(dims[2] / tailleTuileM));
+            float sv = Math.max(1f, Math.round(dims[1] / tailleTuileM));
+            try {
+                mesh.scaleTextureCoordinates(new com.jme3.math.Vector2f(su, sv));
+            } catch (Exception ignored) { /* mesh sans UV : texture etiree, acceptable */ }
+        }
+        return mat;
     }
 
     /** Materiau Unshaded : couleur exacte, independante de tout eclairage. */
