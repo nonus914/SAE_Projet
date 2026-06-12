@@ -6,8 +6,11 @@ import com.jme3.app.state.BaseAppState;
 import com.jme3.font.BitmapFont;
 import com.jme3.font.BitmapText;
 import com.jme3.input.KeyInput;
+import com.jme3.input.MouseInput;
 import com.jme3.input.controls.ActionListener;
 import com.jme3.input.controls.KeyTrigger;
+import com.jme3.input.controls.MouseButtonTrigger;
+import com.jme3.math.Vector2f;
 import com.jme3.material.Material;
 import com.jme3.math.ColorRGBA;
 import com.jme3.scene.Geometry;
@@ -25,6 +28,17 @@ public class WinState extends BaseAppState {
     private Node guiNode;
     private Node uiNode;
 
+    // Zones cliquables des boutons
+    private float bx, bw, btnH = 60f;
+    private float btnY1, btnY2, btnY3;
+
+    // Flash blanc d'ouverture (fondu vers l'interface victoire)
+    private Geometry flashBlanc;
+    private Material matFlash;
+    private float    flashTimer = 0f;
+    private static final float FLASH_PLEIN = 0.7f; // ecran blanc plein
+    private static final float FLASH_FONDU = 1.0f; // duree du fondu
+
     private static final ColorRGBA CYN   = new ColorRGBA(0f, 1f, 1f, 1f);
     private static final ColorRGBA CYN_D = new ColorRGBA(0f, 0.38f, 0.38f, 0.9f);
     private static final ColorRGBA BLANC = new ColorRGBA(0.9f, 0.9f, 0.9f, 1f);
@@ -34,7 +48,17 @@ public class WinState extends BaseAppState {
         if (name.equals("WinRejouer")) rejouer();
         if (name.equals("WinMenu"))    retourMenu();
         if (name.equals("WinQuitter")) app.stop();
+        if (name.equals("WinClic"))    detecterClicSouris();
     };
+
+    /** Clic souris sur les boutons (comme le menu principal). */
+    private void detecterClicSouris() {
+        Vector2f c = app.getInputManager().getCursorPosition();
+        if (c.x < bx || c.x > bx + bw) return;
+        if (c.y >= btnY1 && c.y <= btnY1 + btnH)      rejouer();
+        else if (c.y >= btnY2 && c.y <= btnY2 + btnH) retourMenu();
+        else if (c.y >= btnY3 && c.y <= btnY3 + btnH) app.stop();
+    }
 
     @Override
     protected void initialize(Application application) {
@@ -48,8 +72,8 @@ public class WinState extends BaseAppState {
         uiNode = new Node("WinUI");
         uiNode.attachChild(fondEcran(W, H, "Interface/bg/victoire.png"));
 
-        float bw = Math.min(830f, W - 100f);
-        float bx = (W - bw) / 2f;
+        bw = Math.min(830f, W - 100f);
+        bx = (W - bw) / 2f;
         float headerH = 200f;
         float headerY = H * 0.52f;
 
@@ -69,23 +93,53 @@ public class WinState extends BaseAppState {
         centrer(sub, W, headerY - 32, 3f);
         uiNode.attachChild(sub);
 
-        // Boutons
-        float btnH = 60f, gap = 12f;
-        float btnY1 = headerY - gap - btnH - 50f;
-        float btnY2 = btnY1 - gap - btnH;
+        // Boutons (cliquables a la souris + raccourcis clavier)
+        float gap = 12f;
+        btnY1 = headerY - gap - btnH - 50f;
+        btnY2 = btnY1 - gap - btnH;
+        btnY3 = btnY2 - gap - btnH;
 
-        uiNode.attachChild(boutonBoite(font, "RECOMMENCER  [R]",    bx, btnY1, bw, btnH, CYN));
-        uiNode.attachChild(boutonBoite(font, "QUITTER  [ECHAP]",    bx, btnY2, bw, btnH, CYN));
+        uiNode.attachChild(boutonBoite(font, "RECOMMENCER  [R]",  bx, btnY1, bw, btnH, CYN));
+        uiNode.attachChild(boutonBoite(font, "MENU  [M]",         bx, btnY2, bw, btnH, CYN));
+        uiNode.attachChild(boutonBoite(font, "QUITTER  [ECHAP]",  bx, btnY3, bw, btnH, CYN));
 
         guiNode.attachChild(uiNode);
+
+        // ── Flash BLANC plein ecran → fondu vers l'interface victoire ────────
+        flashBlanc = new Geometry("FlashBlanc", new Quad(W, H));
+        matFlash = new Material(app.getAssetManager(), "Common/MatDefs/Misc/Unshaded.j3md");
+        matFlash.setColor("Color", ColorRGBA.White);
+        matFlash.getAdditionalRenderState().setBlendMode(
+                com.jme3.material.RenderState.BlendMode.Alpha);
+        flashBlanc.setMaterial(matFlash);
+        flashBlanc.setLocalTranslation(0, 0, 50f); // au-dessus de toute l'UI
+        guiNode.attachChild(flashBlanc);
 
         app.getInputManager().addMapping("WinRejouer", new KeyTrigger(KeyInput.KEY_R));
         app.getInputManager().addMapping("WinMenu",    new KeyTrigger(KeyInput.KEY_M));
         app.getInputManager().addMapping("WinQuitter", new KeyTrigger(KeyInput.KEY_ESCAPE));
-        app.getInputManager().addListener(actionListener,"WinRejouer","WinMenu","WinQuitter");
+        app.getInputManager().addMapping("WinClic",
+                new MouseButtonTrigger(MouseInput.BUTTON_LEFT));
+        app.getInputManager().addListener(actionListener,
+                "WinRejouer","WinMenu","WinQuitter","WinClic");
 
         app.getInputManager().setCursorVisible(true);
         app.getViewPort().setBackgroundColor(new ColorRGBA(0.03f, 0.03f, 0.05f, 1f));
+    }
+
+    @Override
+    public void update(float tpf) {
+        // Ecran blanc plein, puis fondu progressif vers l'interface
+        if (flashBlanc == null) return;
+        flashTimer += tpf;
+        if (flashTimer <= FLASH_PLEIN) return;
+        float t = (flashTimer - FLASH_PLEIN) / FLASH_FONDU; // 0 → 1
+        if (t >= 1f) {
+            guiNode.detachChild(flashBlanc);
+            flashBlanc = null;
+        } else {
+            matFlash.setColor("Color", new ColorRGBA(1f, 1f, 1f, 1f - t));
+        }
     }
 
     // ── Helpers (identiques aux autres etats) ─────────────────────────────────
@@ -124,8 +178,7 @@ public class WinState extends BaseAppState {
         if (alpha) mat.getAdditionalRenderState()
                 .setBlendMode(com.jme3.material.RenderState.BlendMode.Alpha);
         g.setMaterial(mat);
-        if (alpha) g.setQueueBucket(
-                com.jme3.renderer.queue.RenderQueue.Bucket.Transparent);
+        // Bucket Gui conserve : tri par Z correct avec les textes (cf MenuState)
         g.setLocalTranslation(x, y, z);
         return g;
     }
@@ -160,8 +213,9 @@ public class WinState extends BaseAppState {
     @Override
     protected void cleanup(Application application) {
         guiNode.detachChild(uiNode);
+        if (flashBlanc != null) { guiNode.detachChild(flashBlanc); flashBlanc = null; }
         app.getInputManager().removeListener(actionListener);
-        for (String m : new String[]{"WinRejouer","WinMenu","WinQuitter"})
+        for (String m : new String[]{"WinRejouer","WinMenu","WinQuitter","WinClic"})
             if (app.getInputManager().hasMapping(m)) app.getInputManager().deleteMapping(m);
     }
 

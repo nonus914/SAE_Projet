@@ -158,16 +158,26 @@ public class Laboratory {
             return unshaded(am, new ColorRGBA(0.05f, 0.05f, 0.06f, 1f));
 
         // ── Surfaces texturees ────────────────────────────────────────────────
-        // Les murs prennent une legere teinte de leur salle (continuite neon).
+        // AMBIANCE PAR SALLE : murs, sols, plafonds et structure baignent
+        // FRANCHEMENT dans la couleur de leur salle (comme le rendu Blender).
         ColorRGBA salle  = couleurNeonSalle(z);
-        ColorRGBA teinteMur = new ColorRGBA(0.40f + salle.r * 0.12f,
-                                            0.40f + salle.g * 0.12f,
-                                            0.40f + salle.b * 0.12f, 1f);
+        ColorRGBA teinteMur = new ColorRGBA(0.26f + salle.r * 0.45f,
+                                            0.26f + salle.g * 0.45f,
+                                            0.26f + salle.b * 0.45f, 1f);
+        ColorRGBA teinteSol = new ColorRGBA(0.34f + salle.r * 0.26f,
+                                            0.34f + salle.g * 0.26f,
+                                            0.34f + salle.b * 0.26f, 1f);
+        ColorRGBA teintePlafond = new ColorRGBA(0.14f + salle.r * 0.16f,
+                                                0.14f + salle.g * 0.16f,
+                                                0.14f + salle.b * 0.16f, 1f);
+        ColorRGBA teinteAcier = new ColorRGBA(0.30f + salle.r * 0.20f,
+                                              0.30f + salle.g * 0.20f,
+                                              0.30f + salle.b * 0.20f, 1f);
 
         if (gn.startsWith("floor") || mn.contains("wornfloor"))
-            return texture(am, geo, "beton_sol.png", 3.0f, new ColorRGBA(0.52f, 0.52f, 0.54f, 1f));
+            return texture(am, geo, "beton_sol.png", 3.0f, teinteSol);
         if (gn.startsWith("ceiling"))
-            return texture(am, geo, "beton_mur.png", 3.0f, new ColorRGBA(0.26f, 0.26f, 0.30f, 1f));
+            return texture(am, geo, "beton_mur.png", 3.0f, teintePlafond);
         if (gn.startsWith("wall") || mn.startsWith("bkm")
                 || mn.contains("wallconcrete") || mn.contains("damagedwall"))
             return texture(am, geo, "beton_mur.png", 2.5f, teinteMur);
@@ -181,7 +191,7 @@ public class Laboratory {
         if (gn.startsWith("skim_"))
             return unshaded(am, new ColorRGBA(0.10f, 0.10f, 0.12f, 1f)); // plinthe sombre
         // Structure metallique par defaut : poutres, piliers, supports, gantry...
-        return texture(am, geo, "acier_peint.png", 1.5f, new ColorRGBA(0.42f, 0.43f, 0.47f, 1f));
+        return texture(am, geo, "acier_peint.png", 1.5f, teinteAcier);
     }
 
     /** BaseColor du materiau glTF d'origine, ou couleur par defaut. */
