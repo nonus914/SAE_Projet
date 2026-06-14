@@ -99,9 +99,9 @@ public class WinState extends BaseAppState {
         btnY2 = btnY1 - gap - btnH;
         btnY3 = btnY2 - gap - btnH;
 
-        uiNode.attachChild(boutonBoite(font, "RECOMMENCER  [R]",  bx, btnY1, bw, btnH, CYN));
-        uiNode.attachChild(boutonBoite(font, "MENU  [M]",         bx, btnY2, bw, btnH, CYN));
-        uiNode.attachChild(boutonBoite(font, "QUITTER  [ECHAP]",  bx, btnY3, bw, btnH, CYN));
+        uiNode.attachChild(boutonBoite(font, "RECOMMENCER", bx, btnY1, bw, btnH, CYN));
+        uiNode.attachChild(boutonBoite(font, "MENU",        bx, btnY2, bw, btnH, CYN));
+        uiNode.attachChild(boutonBoite(font, "QUITTER",     bx, btnY3, bw, btnH, CYN));
 
         guiNode.attachChild(uiNode);
 

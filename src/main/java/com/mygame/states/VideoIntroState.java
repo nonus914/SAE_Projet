@@ -71,6 +71,8 @@ public class VideoIntroState extends BaseAppState {
                 app.getAssetManager().loadModel("Models/props/old_bed.glb");
                 app.getAssetManager().loadModel("Models/player/arms_throwing.glb");
                 app.getAssetManager().loadModel("Models/props/basic_generator.glb");
+                app.getAssetManager().loadModel("Models/props/heavy_robot.glb");
+                app.getAssetManager().loadModel("Models/props/island_capri.glb"); // ile de fin (evite le freeze)
                 System.out.println("[Intro] Prechargement du labo termine.");
             } catch (Exception ignored) {}
         }, "PreloadLabo").start();

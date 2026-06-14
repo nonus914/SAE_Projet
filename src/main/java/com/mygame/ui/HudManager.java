@@ -173,12 +173,12 @@ public class HudManager {
         texteListeInventaire.setLocalTranslation(25, PANEL_H - 65, 1);
         panneauInventaire.attachChild(texteListeInventaire);
 
-        // Hint fermeture
+        // Hint fermeture — centre, remonte dans le cadre, cyan bien visible
         BitmapText hintFermer = new BitmapText(font, false);
-        hintFermer.setSize(font.getCharSet().getRenderedSize() * 0.9f);
-        hintFermer.setColor(new ColorRGBA(0.6f, 0.6f, 0.6f, 1f));
-        hintFermer.setText("[I] Fermer");
-        hintFermer.setLocalTranslation(PANEL_W - 85f, 20, 1);
+        hintFermer.setSize(font.getCharSet().getRenderedSize() * 1.0f);
+        hintFermer.setColor(new ColorRGBA(0f, 0.85f, 1f, 1f));
+        hintFermer.setText("Appuie sur [ I ] pour fermer");
+        hintFermer.setLocalTranslation(PANEL_W / 2f - hintFermer.getLineWidth() / 2f, 45, 1);
         panneauInventaire.attachChild(hintFermer);
 
         // Centrer le panneau
@@ -319,9 +319,9 @@ public class HudManager {
         panneauDialogue.attachChild(texteDialogueContenu);
 
         // ── Hint continuer ────────────────────────────────────────────────────
-        BitmapText hintCont = txt("[E] Continuer", 0.9f,
-                new ColorRGBA(0.7f, 0.7f, 0.7f, 1f));
-        hintCont.setLocalTranslation(dw - 160f, 14, 3f);
+        BitmapText hintCont = txt("[E] Continuer", 1.25f,
+                new ColorRGBA(0f, 0.9f, 1f, 1f)); // plus grand + cyan visible
+        hintCont.setLocalTranslation(dw - hintCont.getLineWidth() - 22f, 30, 4f);
         panneauDialogue.attachChild(hintCont);
     }
 

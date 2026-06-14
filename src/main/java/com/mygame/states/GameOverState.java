@@ -29,12 +29,24 @@ public class GameOverState extends BaseAppState {
     private static final ColorRGBA CYN_D = new ColorRGBA(0f, 0.38f, 0.38f, 0.9f);
     private static final ColorRGBA BLANC = new ColorRGBA(0.9f, 0.9f, 0.9f, 1f);
 
+    private float bx, bw, btnH = 60f;
+    private float btnY1, btnY2, btnY3;
+
     private final ActionListener actionListener = (name, isPressed, tpf) -> {
         if (!isPressed) return;
         if (name.equals("GORejouer")) rejouer();
         if (name.equals("GOMenu"))    retourMenu();
         if (name.equals("GOQuitter")) app.stop();
+        if (name.equals("GOClic"))    detecterClic();
     };
+
+    private void detecterClic() {
+        com.jme3.math.Vector2f c = app.getInputManager().getCursorPosition();
+        if (c.x < bx || c.x > bx + bw) return;
+        if (c.y >= btnY1 && c.y <= btnY1 + btnH)      rejouer();
+        else if (c.y >= btnY2 && c.y <= btnY2 + btnH) retourMenu();
+        else if (c.y >= btnY3 && c.y <= btnY3 + btnH) app.stop();
+    }
 
     @Override
     protected void initialize(Application application) {
@@ -48,8 +60,8 @@ public class GameOverState extends BaseAppState {
         uiNode = new Node("GameOverUI");
         uiNode.attachChild(fondEcran(W, H, "Interface/bg/menu.png"));
 
-        float bw = Math.min(830f, W - 100f);
-        float bx = (W - bw) / 2f;
+        bw = Math.min(830f, W - 100f);
+        bx = (W - bw) / 2f;
         float headerH = 200f;
         float headerY = H * 0.52f;
 
@@ -70,20 +82,24 @@ public class GameOverState extends BaseAppState {
         centrer(sub, W, headerY - 32, 3f);
         uiNode.attachChild(sub);
 
-        // Boutons
-        float btnH = 60f, gap = 12f;
-        float btnY1 = headerY - gap - btnH - 50f;
-        float btnY2 = btnY1 - gap - btnH;
+        // Boutons (cliquables a la souris)
+        float gap = 12f;
+        btnY1 = headerY - gap - btnH - 50f;
+        btnY2 = btnY1 - gap - btnH;
+        btnY3 = btnY2 - gap - btnH;
 
-        uiNode.attachChild(boutonBoite(font, "RECOMMENCER  [R]",     bx, btnY1, bw, btnH, CYN));
-        uiNode.attachChild(boutonBoite(font, "QUITTER  [ECHAP]",     bx, btnY2, bw, btnH, CYN));
+        uiNode.attachChild(boutonBoite(font, "RECOMMENCER", bx, btnY1, bw, btnH, CYN));
+        uiNode.attachChild(boutonBoite(font, "MENU",        bx, btnY2, bw, btnH, CYN));
+        uiNode.attachChild(boutonBoite(font, "QUITTER",     bx, btnY3, bw, btnH, CYN));
 
         guiNode.attachChild(uiNode);
 
         app.getInputManager().addMapping("GORejouer", new KeyTrigger(KeyInput.KEY_R));
         app.getInputManager().addMapping("GOMenu",    new KeyTrigger(KeyInput.KEY_M));
         app.getInputManager().addMapping("GOQuitter", new KeyTrigger(KeyInput.KEY_ESCAPE));
-        app.getInputManager().addListener(actionListener, "GORejouer","GOMenu","GOQuitter");
+        app.getInputManager().addMapping("GOClic",
+                new com.jme3.input.controls.MouseButtonTrigger(com.jme3.input.MouseInput.BUTTON_LEFT));
+        app.getInputManager().addListener(actionListener, "GORejouer","GOMenu","GOQuitter","GOClic");
 
         app.getInputManager().setCursorVisible(true);
         app.getViewPort().setBackgroundColor(new ColorRGBA(0.03f, 0.03f, 0.05f, 1f));
@@ -125,8 +141,7 @@ public class GameOverState extends BaseAppState {
         if (alpha) mat.getAdditionalRenderState()
                 .setBlendMode(com.jme3.material.RenderState.BlendMode.Alpha);
         g.setMaterial(mat);
-        if (alpha) g.setQueueBucket(
-                com.jme3.renderer.queue.RenderQueue.Bucket.Transparent);
+        // Bucket Gui conserve (pas Transparent) → les fonds de boites s'affichent
         g.setLocalTranslation(x, y, z);
         return g;
     }
@@ -164,7 +179,7 @@ public class GameOverState extends BaseAppState {
     protected void cleanup(Application application) {
         guiNode.detachChild(uiNode);
         app.getInputManager().removeListener(actionListener);
-        for (String m : new String[]{"GORejouer","GOMenu","GOQuitter"})
+        for (String m : new String[]{"GORejouer","GOMenu","GOQuitter","GOClic"})
             if (app.getInputManager().hasMapping(m)) app.getInputManager().deleteMapping(m);
     }
 

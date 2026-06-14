@@ -103,8 +103,8 @@ public class GameState extends BaseAppState {
     private boolean alarmeActive      = false;
     private float   tempsAlarme       = 0f;
     private boolean qteActif          = false;
-    private final String[] sequenceQTE = {"QTE_T","QTE_T","QTE_H","QTE_G"};
-    private final String[] nomsQTE     = {"[T]","[T]","[H]","[G]"};
+    private final String[] sequenceQTE = {"QTE_Haut","QTE_Bas","QTE_Bas","QTE_Gauche"};
+    private final String[] nomsQTE     = {"HAUT","BAS","BAS","GAUCHE"};
     private int     qteIndex          = 0;
     private boolean victoireEnCours   = false;
     private float   finTimer          = -1f;
@@ -112,7 +112,14 @@ public class GameState extends BaseAppState {
     private boolean fuiteSalle5       = false; 
     private float   fuiteTimer        = 0f;
     private boolean porte004Ouverte   = false;
+    private Spatial  robotFin    = null;   // robot lourd qui surgit a l'echec de la fuite
+    private boolean  finRepare   = false;  // epilogue : true=preuves sauvees, false=labo detruit
+    private boolean  archivePrete = false; // (repair) code fleche fait → le gardien attend
+    private static final Vector3f POS_ARCHIVE = new Vector3f(0f, 0f, 131f); // gardien AU FOND de la salle 5
+    private boolean  mortEnCours = false;
+    private float    mortTimer   = 0f;
     private com.jme3.audio.AudioNode sirene = null;
+    private com.jme3.font.BitmapFont fontJeu; // pour les messages ecrits sur les murs
     private Spatial spatialCrowbar    = null;
     private Spatial spatialPile       = null;
     private Geometry marqueurPile     = null;
@@ -239,9 +246,9 @@ public class GameState extends BaseAppState {
         inventaire = new Inventory();
 
         app.getRootNode().attachChild(pilesNode);
-        placerPile(new Vector3f( 2f, 1f, 11.5f)); 
-        placerPile(new Vector3f(-2f, 1f, 34.0f)); 
-        placerPile(new Vector3f( 1f, 1f, 58.0f)); 
+        placerPile(new Vector3f( 2f, 1f,  8.0f)); // salle 1
+        placerPile(new Vector3f(-3f, 1f, 52.0f)); // salle 3
+        placerPile(new Vector3f( 3f, 1f, 78.0f)); // salle 4
 
         app.getRootNode().attachChild(objetsNode);
 
@@ -320,6 +327,15 @@ public class GameState extends BaseAppState {
         creerMeublesRoom3();
         creerMeublesRoom4();
 
+        // Robot gardien de l'archive (salle 5) — la ou on arrache les preuves.
+        // (charge aussi le modele en cache → pas de freeze quand un robot surgit)
+        Spatial robotArchive = chargerProp("Models/props/heavy_robot.glb", "Robot_Archive",
+                POS_ARCHIVE, 7f); // gardien de l'archive — imposant (~5m), bien visible
+        robotArchive.rotate(0, FastMath.PI, 0); // face au joueur qui arrive
+
+        // Histoire ECRITE SUR LES MURS (au fur et a mesure) — touche horreur
+        creerTextesMuraux();
+
         enregistrerTouches();
     }
 
@@ -334,14 +350,48 @@ public class GameState extends BaseAppState {
     }
 
     private void placerPile(Vector3f pos) {
-        Geometry pile = new Geometry("Pile_" + pilesNode.getQuantity(),
-                                     new Cylinder(20, 20, 0.15f, 0.4f, true));
-        Material mat = new Material(app.getAssetManager(), "Common/MatDefs/Misc/Unshaded.j3md");
-        mat.setColor("Color", ColorRGBA.Yellow);
-        pile.setMaterial(mat);
-        pile.rotate(FastMath.HALF_PI, 0, 0);
-        pile.setLocalTranslation(pos);
+        // Vrai modele de batterie (au lieu du cube jaune)
+        Spatial pile = app.getAssetManager().loadModel("Models/props/battery_pickup.glb");
+        pile.setName("Pile_" + pilesNode.getQuantity());
         pilesNode.attachChild(pile);
+        // auto-calibrage a ~0.55m sur le plus grand axe
+        app.getRootNode().updateGeometricState();
+        float maxDim = 1f;
+        if (pile.getWorldBound() instanceof com.jme3.bounding.BoundingBox) {
+            com.jme3.bounding.BoundingBox bb = (com.jme3.bounding.BoundingBox) pile.getWorldBound();
+            maxDim = 2f * Math.max(bb.getXExtent(), Math.max(bb.getYExtent(), bb.getZExtent()));
+        }
+        if (maxDim < 1e-4f) maxDim = 1f;
+        pile.setLocalScale(0.55f / maxDim);
+        pile.setLocalTranslation(pos);
+    }
+
+    // ── Histoire ecrite sur les murs (touche horreur, "voix-off" visuelle) ───
+
+    private void creerTextesMuraux() {
+        fontJeu = app.getAssetManager().loadFont("Interface/Fonts/Default.fnt");
+        // Uniquement salles 1 et 2 (en salle 3 le labyrinthe coupe la vue)
+        texteMural("SUJET 27",                         0f, true,  2.4f); // R1 gauche
+        texteMural("TU NE DEVAIS PAS\nTE REVEILLER",   8f, false, 2.4f); // R1 droite
+        texteMural("TA MUE CYBORG\nEST INACHEVEE",    14f, true,  2.4f); // R1 gauche (fond)
+        texteMural("TON CORPS DEPEND\nDE TA BATTERIE",23f, false, 2.4f); // R2 droite
+        texteMural("LES PILES\nTE GARDENT EN VIE",    30f, true,  2.4f); // R2 gauche
+        texteMural("ZERO BATTERIE\n= LA MORT",        37f, false, 2.4f); // R2 droite
+    }
+
+    /** Message "grave" sur un mur lateral (rouge sang), oriente vers la salle. */
+    private void texteMural(String texte, float z, boolean murGauche, float y) {
+        com.jme3.font.BitmapText t = new com.jme3.font.BitmapText(fontJeu);
+        t.setSize(0.55f);
+        t.setColor(new ColorRGBA(0.85f, 0.06f, 0.06f, 1f)); // rouge sang
+        t.setText(texte);
+        t.setLocalTranslation(-t.getLineWidth() / 2f, 0.6f, 0f); // centre horizontalement
+        t.setQueueBucket(com.jme3.renderer.queue.RenderQueue.Bucket.Transparent);
+        Node n = new Node("TexteMural");
+        n.attachChild(t);
+        n.setLocalTranslation(murGauche ? -9.3f : 9.3f, y, z);
+        n.rotate(0, murGauche ? FastMath.HALF_PI : -FastMath.HALF_PI, 0);
+        app.getRootNode().attachChild(n);
     }
 
     private void enregistrerTouches() {
@@ -372,10 +422,10 @@ public class GameState extends BaseAppState {
                                                          new KeyTrigger(KeyInput.KEY_NUMPADENTER));
         app.getInputManager().addMapping("DigiFermer",   new KeyTrigger(KeyInput.KEY_ESCAPE));
 
-        app.getInputManager().addMapping("QTE_T", new KeyTrigger(KeyInput.KEY_T));
-        app.getInputManager().addMapping("QTE_Y", new KeyTrigger(KeyInput.KEY_Y));
-        app.getInputManager().addMapping("QTE_G", new KeyTrigger(KeyInput.KEY_G));
-        app.getInputManager().addMapping("QTE_H", new KeyTrigger(KeyInput.KEY_H));
+        app.getInputManager().addMapping("QTE_Haut",   new KeyTrigger(KeyInput.KEY_UP));
+        app.getInputManager().addMapping("QTE_Bas",    new KeyTrigger(KeyInput.KEY_DOWN));
+        app.getInputManager().addMapping("QTE_Gauche", new KeyTrigger(KeyInput.KEY_LEFT));
+        app.getInputManager().addMapping("QTE_Droite", new KeyTrigger(KeyInput.KEY_RIGHT));
 
         app.getInputManager().addListener(actionListener,
                 "Avancer","Reculer","Gauche","Droite",
@@ -383,10 +433,11 @@ public class GameState extends BaseAppState {
                 "Digi0","Digi1","Digi2","Digi3","Digi4",
                 "Digi5","Digi6","Digi7","Digi8","Digi9",
                 "DigiEffacer","DigiValider","DigiFermer",
-                "QTE_T","QTE_Y","QTE_G","QTE_H");
+                "QTE_Haut","QTE_Bas","QTE_Gauche","QTE_Droite");
     }
 
     private void onAction(String name, boolean isPressed, float tpf) {
+        if (mortEnCours || victoireEnCours) return; // plus d'input apres la fin
         if (hud.isDigicodeOuvert()) {
             boolean mouvement = name.equals("Avancer") || name.equals("Reculer")
                              || name.equals("Gauche")  || name.equals("Droite")
@@ -452,7 +503,7 @@ public class GameState extends BaseAppState {
             return;
         }
 
-        if (qteActif) {
+        if (qteActif) { // code fleche de la PORTE FINALE (chemin REPARATION)
             if (!isPressed) return;
             joueur.setForward(false); joueur.setBackward(false);
             joueur.setLeft(false);    joueur.setRight(false);
@@ -460,13 +511,11 @@ public class GameState extends BaseAppState {
                 qteIndex++;
                 if (qteIndex >= sequenceQTE.length) {
                     qteActif = false;
-                    doorManager.deverrouiller("004");
-                    doorManager.interagir();
-                    porte004Ouverte = true;
-                    demarrerFuite();
+                    archivePrete = true; // l'archive s'ouvre : le gardien t'attend (E)
+                    hud.setMessageInteraction("");
                 }
-            } else if (name.startsWith("QTE_") || name.equals("Interagir")) {
-                qteIndex = 0; 
+            } else if (name.startsWith("QTE_")) {
+                qteIndex = 0; // mauvaise fleche → on recommence la sequence
             }
             return;
         }
@@ -483,6 +532,15 @@ public class GameState extends BaseAppState {
             case "VoirInventaire" -> { if (isPressed) hud.toggleInventaire(inventaire.getObjets()); }
             case "Interagir"      -> {
                 if (isPressed) {
+                    // Gardien de l'archive (fin REPARATION) : il te remet les preuves
+                    if (archivePrete && proche(POS_ARCHIVE, 5f)) {
+                        inventaire.ajouter("Dossiers classifies (preuves)");
+                        finRepare = true;
+                        declencherVictoire("\"Tiens... les dossiers du Projet 27.\n"
+                                + "Avec ca, tu peux porter plainte. Maintenant FILE !\"");
+                        return;
+                    }
+
                     CollisionResults resultats = new CollisionResults();
                     Ray rayon = new Ray(app.getCamera().getLocation(), app.getCamera().getDirection());
                     app.getRootNode().collideWith(rayon, resultats);
@@ -540,11 +598,12 @@ public class GameState extends BaseAppState {
                                 ? "[!] Rapporte la cle a Daniel pour qu'il ouvre !"
                                 : "[!] Porte cassee - trouve un outil pour Daniel");
                         } else if ("004".equals(numPorte)) {
-                            if ((generateurRepare || generateurDetruit) && !qteActif) {
-                                qteActif = true; 
-                                qteIndex = 0;
-                                hud.setMessageInteraction("");
-                            } else if (!generateurRepare && !generateurDetruit) {
+                            if (generateurRepare || generateurDetruit) {
+                                doorManager.deverrouiller("004");
+                                doorManager.interagir();
+                                porte004Ouverte = true;
+                                demarrerFuite(); // la course de 10s commence !
+                            } else {
                                 hud.setMessageInteraction("[!] Verrouillee : repare ou sabote le generateur");
                             }
                         } else {
@@ -696,8 +755,8 @@ public class GameState extends BaseAppState {
         
         if (choixReparer) {
             if (pilesEnigme4 >= 2) {
-                generateurRepare = true; 
-                hud.setMessageInteraction("Generateur REPARE ! Va a la porte 004 et entre la combinaison.");
+                generateurRepare = true;
+                hud.setMessageInteraction("Generateur REPARE ! Va a la porte 004 et PREPARE-TOI a courir.");
             } else {
                 hud.setMessageInteraction("Il manque une pile 9V (" + pilesEnigme4 + "/2).");
             }
@@ -706,7 +765,7 @@ public class GameState extends BaseAppState {
                 generateurDetruit = true; 
                 alarmeActive = true; 
                 if (sirene != null) sirene.play();
-                hud.setMessageInteraction("Generateur SABOTE ! Va a la porte 004 et entre la combinaison.");
+                hud.setMessageInteraction("Generateur SABOTE ! Fonce a la porte 004 et FUIS !");
             } else {
                 hud.setMessageInteraction("Il te faut le PIED DE BICHE (salle 1).");
             }
@@ -740,16 +799,44 @@ public class GameState extends BaseAppState {
     private void demarrerFuite() {
         fuiteSalle5  = true;
         alarmeActive = true;
-        fuiteTimer   = 35f;
+        fuiteTimer   = 10f; // 10 secondes pour s'echapper
         if (sirene != null) sirene.play();
         hud.setMessageInteraction("");
     }
 
+    /** Echec de la fuite : un robot lourd surgit, raille le joueur, puis Game Over. */
+    private void declencherMort() {
+        mortEnCours = true;
+        mortTimer   = 4f;
+        qteActif    = false;
+        fuiteSalle5 = false;
+        if (sirene != null) sirene.stop();
+        if (overlay != null) overlay.setColor(new ColorRGBA(0.35f, 0f, 0f, 1f)); // rouge sombre
+        joueur.setForward(false); joueur.setBackward(false);
+        joueur.setLeft(false);    joueur.setRight(false);
+        // Le robot surgit DEVANT le joueur et lui fait face
+        Vector3f pj  = joueur.getCharacterControl().getPhysicsLocation();
+        Vector3f dir = app.getCamera().getDirection().clone(); dir.y = 0; dir.normalizeLocal();
+        Vector3f devant = pj.add(dir.mult(3.5f)); devant.y = 0f;
+        robotFin = chargerProp("Models/props/heavy_robot.glb", "Robot_Fin", devant, 7f);
+        robotFin.lookAt(new Vector3f(pj.x, devant.y, pj.z), Vector3f.UNIT_Y);
+        hud.setCharade("");
+        hud.setMessageInteraction("");
+        hud.setObjectifEncadre("\"Tu veux t'enfuir si vite ?\"");
+    }
+
     private String calculerObjectif() {
-        if (fuiteSalle5)   return "FUIS ! Atteins le fond du labo (" + Math.max(0, (int) Math.ceil(fuiteTimer)) + "s)";
-        if (qteActif)      return "Combinaison : appuie sur " + nomsQTE[qteIndex];
-        if (generateurRepare || generateurDetruit)
-                           return "Porte de sortie (004) : entre la combinaison.";
+        if (archivePrete)  return "Parle au GARDIEN de l'archive (E) pour recuperer les preuves.";
+        if (qteActif) {
+            StringBuilder sb = new StringBuilder("PORTE FINALE >>  ");
+            for (int i = 0; i < sequenceQTE.length; i++)
+                sb.append(i < qteIndex ? "[ok] " : nomsQTE[i] + "  ");
+            return sb.toString();
+        }
+        if (fuiteSalle5)   return (choixReparer ? "COURS vers la porte finale ! " : "FUIS ! Atteins le fond ! ")
+                                  + "(" + Math.max(0, (int) Math.ceil(fuiteTimer)) + "s)";
+        if (generateurRepare) return "Porte 004 : entre la COMBINAISON, puis vois le gardien au fond.";
+        if (generateurDetruit) return "AUTODESTRUCTION ! Fonce a la porte 004 et FUIS !";
         if (enigme4Active) {
             if (!generateurVu)   return "Coupure de courant ! Trouve le generateur (salle 4).";
             if (etatDocteur < 2) return "Le Dr. W (salle 3) sait quoi faire du generateur. Retourne le voir.";
@@ -983,7 +1070,20 @@ public class GameState extends BaseAppState {
             if (finTimer <= 0) {
                 app.getStateManager().detach(this);
                 app.getRootNode().detachAllChildren();
-                app.getStateManager().attach(new WinState());
+                // Epilogue "A SUIVRE" sur l'ile (texte different selon le choix)
+                app.getStateManager().attach(new FinIleState(finRepare));
+            }
+            return;
+        }
+
+        if (mortEnCours) { // le robot raille le joueur, puis Game Over
+            mortTimer -= tpf;
+            joueur.setForward(false); joueur.setBackward(false);
+            joueur.setLeft(false);    joueur.setRight(false);
+            if (mortTimer <= 0) {
+                app.getStateManager().detach(this);
+                app.getRootNode().detachAllChildren();
+                app.getStateManager().attach(new GameOverState());
             }
             return;
         }
@@ -1008,10 +1108,11 @@ public class GameState extends BaseAppState {
 
         for (int i = pilesNode.getQuantity() - 1; i >= 0; i--) {
             Spatial pile = pilesNode.getChild(i);
+            pile.rotate(0, tpf * 1.5f, 0); // tourne lentement pour attirer l'oeil
             if (pos.distanceSquared(pile.getWorldTranslation()) < 2f * 2f) {
                 batterie.rechargerAFond();
                 pile.removeFromParent();
-                hud.setMessageInteraction("Pile ramassee ! Batterie rechargee !");
+                hud.setMessageInteraction(">>> BATTERIE RECHARGEE A FOND <<<");
             }
         }
 
@@ -1042,27 +1143,41 @@ public class GameState extends BaseAppState {
 
         if (alarmeActive) {
             tempsAlarme += tpf;
-            float pulse = FastMath.pow(FastMath.sin(tempsAlarme * 6f), 2f); 
-            overlay.setColor(new ColorRGBA(0.45f + 0.55f * pulse, 0.03f, 0.03f, 1f)); 
+            // Le rouge ne tombe PAS d'un coup : on voit d'abord la salle (belle),
+            // puis l'alarme s'installe progressivement (~4s) en rouge pulsant.
+            float montee = Math.min(1f, tempsAlarme / 4f);
+            float pulse  = FastMath.pow(FastMath.sin(tempsAlarme * 6f), 2f);
+            float rouge  = 0.45f + 0.55f * pulse;
+            float r  = (1f - montee) + montee * rouge;  // blanc → rouge
+            float vb = (1f - montee) + montee * 0.04f;  // vert/bleu s'effacent
+            overlay.setColor(new ColorRGBA(r, vb, vb, 1f));
         } else {
             majTeinteEcran(dansLeNoir);
         }
 
-        if (fuiteSalle5 && !victoireEnCours) {
-            fuiteTimer -= tpf;
-            batterie.drainer(tpf * 20f); 
-            if (pos.z > 130f) {
-                // Fin differente selon le choix de l'enigme 4
-                declencherVictoire(choixReparer
-                    ? "LUMIERE RESTAUREE. ILS SAVENT OU TU ES...\nMAIS TU ES DEHORS. SUJET 27 EVACUE - VICTOIRE !"
-                    : "LE LABO SOMBRE AVEC SES SECRETS.\nSUJET 27 EST LIBRE - VICTOIRE !");
-            } else if (fuiteTimer <= 0f || batterie.isGameOver()) {
-                if (sirene != null) sirene.stop();
-                app.getStateManager().detach(this);
-                app.getRootNode().detachAllChildren();
-                app.getStateManager().attach(new GameOverState());
-                return;
+        if (fuiteSalle5 && !victoireEnCours && !mortEnCours) {
+            // Le chrono se FIGE pendant le code fleche ET le dialogue du gardien
+            boolean fige = qteActif || archivePrete;
+            if (!fige) {
+                fuiteTimer -= tpf;
+                batterie.drainer(tpf * 12f); // la course pompe la batterie
             }
+            if (choixReparer) {
+                // REPARATION : code fleche a la porte finale (s'active pres du bout)
+                if (!fige && pos.z > 118f) {
+                    qteActif = true; qteIndex = 0;
+                    joueur.setForward(false); joueur.setBackward(false);
+                    joueur.setLeft(false);    joueur.setRight(false);
+                }
+                // puis le gardien remet les preuves (interaction E) → victoire
+            } else {
+                // SABOTAGE : juste courir au fond
+                if (pos.z > 130f) {
+                    finRepare = false;
+                    declencherVictoire("Le labo s'autodetruit derriere toi...");
+                }
+            }
+            if (!fige && (fuiteTimer <= 0f || batterie.isGameOver())) declencherMort();
         }
 
         hud.setCharade(dansSalle3 && visionNocturne ? CHARADE : "");
@@ -1083,10 +1198,9 @@ public class GameState extends BaseAppState {
                         ? "[!] Rapporte la cle a Daniel pour qu'il ouvre"
                         : "[!] Porte cassee - trouve un outil pour Daniel");
                 } else if ("004".equals(np)) {
-                    hud.setMessageInteraction(
-                        (generateurDetruit && inventaire.contient("Pied de biche"))
-                            ? "[E] FORCER la porte (pied de biche)"
-                            : "[!] Verrouillee : generateur hors service");
+                    hud.setMessageInteraction((generateurRepare || generateurDetruit)
+                        ? "[E] OUVRIR LA PORTE - prepare-toi a courir !"
+                        : "[!] Verrouillee : generateur hors service");
                 } else {
                     hud.setMessageInteraction("[E] Entrer le code Digicode");
                 }
@@ -1142,7 +1256,9 @@ public class GameState extends BaseAppState {
     }
 
     private void basculerVisionNuit() {
-        if (etatDocteur < 1) { // pas encore apprise : il faut trouver le Dr. W (salle 3)
+        // Verrouillee tant qu'on n'a pas vu le Dr. W — SAUF dans le blackout
+        // (salle 4) ou il faut imperativement pouvoir voir pour survivre.
+        if (etatDocteur < 1 && !enigme4Active) {
             hud.setMessageInteraction("Ces lunettes ont un mode etrange... quelqu'un doit savoir l'activer.");
             return;
         }
@@ -1159,6 +1275,7 @@ public class GameState extends BaseAppState {
         for (PointLight pl : pointLights) app.getRootNode().removeLight(pl);
         pointLights.clear();
         if (fpp != null) { app.getViewPort().removeProcessor(fpp); fpp = null; }
+        if (sirene != null) { sirene.stop(); sirene = null; }
         if (handsView != null) { app.getRenderManager().removeMainView(handsView); handsView = null; handsRoot = null; }
         app.getFlyByCamera().setEnabled(false);
         app.getInputManager().setCursorVisible(true);
@@ -1169,7 +1286,7 @@ public class GameState extends BaseAppState {
             "Digi0","Digi1","Digi2","Digi3","Digi4",
             "Digi5","Digi6","Digi7","Digi8","Digi9",
             "DigiEffacer","DigiValider","DigiFermer",
-            "QTE_T","QTE_Y","QTE_G","QTE_H"
+            "QTE_Haut","QTE_Bas","QTE_Gauche","QTE_Droite"
         }) {
             if (app.getInputManager().hasMapping(m))
                 app.getInputManager().deleteMapping(m);
