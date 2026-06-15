@@ -50,6 +50,7 @@ public class FinIleState extends BaseAppState {
     private static final ColorRGBA CYN   = new ColorRGBA(0f, 1f, 1f, 1f);
     private static final ColorRGBA ROUGE = new ColorRGBA(1f, 0.25f, 0.2f, 1f);
     private static final ColorRGBA OR    = new ColorRGBA(1f, 0.85f, 0.2f, 1f);
+    private static final ColorRGBA OR_VIF = new ColorRGBA(1f, 0.92f, 0.4f, 1f); // or plus lumineux (lisible)
     private static final ColorRGBA BLANC = new ColorRGBA(0.95f, 0.95f, 0.95f, 1f);
     private static final ColorRGBA GRIS  = new ColorRGBA(0.7f, 0.7f, 0.75f, 1f);
 
@@ -126,17 +127,21 @@ public class FinIleState extends BaseAppState {
         // ── Phase 0 : ecran texte (fond noir) ───────────────────────────────
         app.getViewPort().setBackgroundColor(ColorRGBA.Black);
         texteNode = new Node("FinTexte");
-        BitmapText l1 = txt(repare ? "TU AS GARDE LA LUMIERE ALLUMEE..."
-                                   : "TU AS TOUT FAIT SAUTER...", 1.2f, BLANC);
+        BitmapText l1 = txt(repare ? "TU AS RECUPERE LES PDF ET LES LOGS ARCHIVES."
+                                   : "TU AS TOUT DETRUIT DERRIERE TOI.", 1.2f, BLANC);
         centrer(l1, H * 0.66f); texteNode.attachChild(l1);
 
-        grandTitre = txt(repare ? "LA VERITE ECLATERA" : "LE LABO N'EXISTE PLUS", 1.0f,
+        grandTitre = txt(repare ? "TU ES HUMAIN. ENFIN." : "TU ES LIBRE.", 1.0f,
                          repare ? CYN : ROUGE);
         centrer(grandTitre, H * 0.52f); texteNode.attachChild(grandTitre);
 
-        BitmapText l3 = txt(repare ? "Les dossiers classifies sont entre tes mains."
-                                   : "Ses preuves, ses secrets, ses victimes... disparus.", 0.95f, GRIS);
+        BitmapText l3 = txt(repare ? "Les preuves du Projet 27 sont entre tes mains."
+                                   : "Plus de labo. Plus de cages. Plus de Sujet 27.", 0.95f, GRIS);
         centrer(l3, H * 0.40f); texteNode.attachChild(l3);
+
+        BitmapText l4 = txt(repare ? "Tu n'es plus une experience. Tu es un homme, et tu vas parler."
+                                   : "Tu as brule ta prison. Personne ne te poursuivra plus.", 0.85f, GRIS);
+        centrer(l4, H * 0.32f); texteNode.attachChild(l4);
 
         BitmapText hint = txt("[ Clic ou ESPACE pour continuer ]", 0.8f, GRIS);
         centrer(hint, 44); texteNode.attachChild(hint);
@@ -168,12 +173,12 @@ public class FinIleState extends BaseAppState {
 
         ileUiNode = new Node("FinIleUI");
         // Bandes sombres pour rendre le texte lisible sur le ciel clair
-        ileUiNode.attachChild(geo(0, H - 96, W, 56, 1f, new ColorRGBA(0f, 0f, 0f, 0.5f), true));
-        ileUiNode.attachChild(geo(0, 26,    W, 98, 1f, new ColorRGBA(0f, 0f, 0f, 0.5f), true));
-        BitmapText libre = txt("LE SUJET 27 EST LIBRE.", 1.3f, BLANC);
-        centrer(libre, H - 60); ileUiNode.attachChild(libre);
-        BitmapText suite = txt("SAE  GENIE  LOGICIEL", 1.6f, OR);
-        centrer(suite, 80); ileUiNode.attachChild(suite);
+        ileUiNode.attachChild(geo(0, H - 120, W, 86, 1f, new ColorRGBA(0f, 0f, 0f, 0.55f), true));
+        ileUiNode.attachChild(geo(0, 26,      W, 100, 1f, new ColorRGBA(0f, 0f, 0f, 0.6f), true));
+        txtOmbre(ileUiNode, "LE SUJET 27 EST LIBRE.", 1.3f, BLANC, H - 64);
+        txtOmbre(ileUiNode, repare ? "Une nouvelle vie commence."
+                                   : "Loin de tout. Enfin seul, enfin vivant.", 0.85f, GRIS, H - 100);
+        txtOmbre(ileUiNode, "SAE  GENIE  LOGICIEL", 1.6f, OR_VIF, 80);
         BitmapText hint = txt("[ Clic ou ESPACE ]", 0.8f, new ColorRGBA(1f, 1f, 1f, 0.9f));
         centrer(hint, 44); ileUiNode.attachChild(hint);
         guiNode.attachChild(ileUiNode);
@@ -185,13 +190,27 @@ public class FinIleState extends BaseAppState {
         app.getInputManager().setCursorVisible(true);
         if (ileUiNode != null) guiNode.detachChild(ileUiNode);
         menuNode = new Node("FinMenuUI");
-        bw = Math.min(640f, W - 120f);
+        bw = Math.min(720f, W - 120f);
         bx = (W - bw) / 2f;
 
-        BitmapText suite = txt("SAE  GENIE  LOGICIEL", 1.5f, OR);
-        centrer(suite, H - 70); menuNode.attachChild(suite);
+        // Voile sombre : fait ressortir le HUD neon par-dessus l'ile
+        menuNode.attachChild(geo(0, 0, W, H, 0.3f, new ColorRGBA(0f, 0f, 0.02f, 0.55f), true));
 
-        btnY1 = H * 0.44f;
+        // ── Cadre header neon (style Aymen) ──────────────────────────────────
+        float headerH = 168f;
+        float headerY = H * 0.52f;
+        menuNode.attachChild(boite(bx, headerY, bw, headerH, new ColorRGBA(0.04f, 0.07f, 0.09f, 0.92f)));
+        menuNode.attachChild(crochets(bx, headerY, bw, headerH));
+
+        BitmapText status = txt("STATUS: MISSION COMPLETE", 0.85f, CYN);
+        centrer(status, headerY + headerH - 30); menuNode.attachChild(status);
+        BitmapText titre = txt(repare ? "TU ES HUMAIN" : "TU ES LIBRE", 2.6f, repare ? CYN : OR_VIF);
+        centrer(titre, headerY + headerH - 102); menuNode.attachChild(titre);
+        BitmapText tag = txt(repare ? "Le Sujet 27 a recupere les preuves."
+                                    : "Le Sujet 27 s'est evade.", 0.95f, BLANC);
+        centrer(tag, headerY + 22); menuNode.attachChild(tag);
+
+        btnY1 = headerY - 28f - BTN_H;
         btnY2 = btnY1 - 14f - BTN_H;
         btnY3 = btnY2 - 14f - BTN_H;
         menuNode.attachChild(bouton("RECOMMENCER", bx, btnY1));
@@ -258,6 +277,31 @@ public class FinIleState extends BaseAppState {
 
     private void centrer(BitmapText t, float y) {
         t.setLocalTranslation(W / 2f - t.getLineWidth() / 2f, y, 3f);
+    }
+
+    /** Texte centre avec une ombre portee sombre derriere (lisibilite sur fond clair). */
+    private void txtOmbre(Node parent, String s, float scale, ColorRGBA c, float y) {
+        BitmapText ombre = txt(s, scale, new ColorRGBA(0f, 0f, 0f, 0.85f));
+        ombre.setLocalTranslation(W / 2f - ombre.getLineWidth() / 2f + 2f, y - 2f, 2.5f);
+        parent.attachChild(ombre);
+        BitmapText t = txt(s, scale, c);
+        centrer(t, y);
+        parent.attachChild(t);
+    }
+
+    /** Crochets de coin neon (style HUD Aymen) autour d'un cadre. */
+    private Node crochets(float x, float y, float w, float h) {
+        Node n = new Node("crochets");
+        float L = 28f, e = 3f;
+        n.attachChild(geo(x,           y,           L, e, 3f, CYN, false)); // bas-gauche
+        n.attachChild(geo(x,           y,           e, L, 3f, CYN, false));
+        n.attachChild(geo(x + w - L,   y,           L, e, 3f, CYN, false)); // bas-droite
+        n.attachChild(geo(x + w - e,   y,           e, L, 3f, CYN, false));
+        n.attachChild(geo(x,           y + h - e,   L, e, 3f, CYN, false)); // haut-gauche
+        n.attachChild(geo(x,           y + h - L,   e, L, 3f, CYN, false));
+        n.attachChild(geo(x + w - L,   y + h - e,   L, e, 3f, CYN, false)); // haut-droite
+        n.attachChild(geo(x + w - e,   y + h - L,   e, L, 3f, CYN, false));
+        return n;
     }
 
     @Override

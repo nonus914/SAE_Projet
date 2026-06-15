@@ -42,3 +42,6 @@ desktop.ini
 
 # Fichiers temporaires JME
 *.j3o.cache
+
+# Captures de verification (screenshots debug, non lies au jeu)
+captures/

@@ -330,7 +330,7 @@ public class GameState extends BaseAppState {
         // Robot gardien de l'archive (salle 5) — la ou on arrache les preuves.
         // (charge aussi le modele en cache → pas de freeze quand un robot surgit)
         Spatial robotArchive = chargerProp("Models/props/heavy_robot.glb", "Robot_Archive",
-                POS_ARCHIVE, 7f); // gardien de l'archive — imposant (~5m), bien visible
+                POS_ARCHIVE, 10.5f); // gardien de l'archive — agrandi *1.5, tres imposant
         robotArchive.rotate(0, FastMath.PI, 0); // face au joueur qui arrive
 
         // Histoire ECRITE SUR LES MURS (au fur et a mesure) — touche horreur
@@ -373,7 +373,6 @@ public class GameState extends BaseAppState {
         // Uniquement salles 1 et 2 (en salle 3 le labyrinthe coupe la vue)
         texteMural("SUJET 27",                         0f, true,  2.4f); // R1 gauche
         texteMural("TU NE DEVAIS PAS\nTE REVEILLER",   8f, false, 2.4f); // R1 droite
-        texteMural("TA MUE CYBORG\nEST INACHEVEE",    14f, true,  2.4f); // R1 gauche (fond)
         texteMural("TON CORPS DEPEND\nDE TA BATTERIE",23f, false, 2.4f); // R2 droite
         texteMural("LES PILES\nTE GARDENT EN VIE",    30f, true,  2.4f); // R2 gauche
         texteMural("ZERO BATTERIE\n= LA MORT",        37f, false, 2.4f); // R2 droite
@@ -503,7 +502,7 @@ public class GameState extends BaseAppState {
             return;
         }
 
-        if (qteActif) { // code fleche de la PORTE FINALE (chemin REPARATION)
+        if (qteActif) { // combinaison de fleches entree SUR LE ROBOT (REPARATION)
             if (!isPressed) return;
             joueur.setForward(false); joueur.setBackward(false);
             joueur.setLeft(false);    joueur.setRight(false);
@@ -511,7 +510,7 @@ public class GameState extends BaseAppState {
                 qteIndex++;
                 if (qteIndex >= sequenceQTE.length) {
                     qteActif = false;
-                    archivePrete = true; // l'archive s'ouvre : le gardien t'attend (E)
+                    archivePrete = true; // combinaison OK : le robot va te liberer (E)
                     hud.setMessageInteraction("");
                 }
             } else if (name.startsWith("QTE_")) {
@@ -532,12 +531,21 @@ public class GameState extends BaseAppState {
             case "VoirInventaire" -> { if (isPressed) hud.toggleInventaire(inventaire.getObjets()); }
             case "Interagir"      -> {
                 if (isPressed) {
-                    // Gardien de l'archive (fin REPARATION) : il te remet les preuves
-                    if (archivePrete && proche(POS_ARCHIVE, 5f)) {
-                        inventaire.ajouter("Dossiers classifies (preuves)");
-                        finRepare = true;
-                        declencherVictoire("\"Tiens... les dossiers du Projet 27.\n"
-                                + "Avec ca, tu peux porter plainte. Maintenant FILE !\"");
+                    // Robot gardien (fin REPARATION) : entrer la combinaison SUR le
+                    // robot, puis il te libere et te remet les preuves.
+                    if (choixReparer && fuiteSalle5 && proche(POS_ARCHIVE, 6f)) {
+                        if (archivePrete) {
+                            inventaire.ajouter("Dossiers classifies (preuves)");
+                            finRepare = true;
+                            declencherVictoire("\"Combinaison acceptee. Tu es libre, Sujet 27.\n"
+                                    + "Tu es humain... enfin. Prends les preuves et COURS.\"");
+                        } else if (!qteActif) {
+                            // ouvrir la saisie de la combinaison directement sur le robot
+                            qteActif = true; qteIndex = 0;
+                            joueur.setForward(false); joueur.setBackward(false);
+                            joueur.setLeft(false);    joueur.setRight(false);
+                            hud.setMessageInteraction("");
+                        }
                         return;
                     }
 
@@ -826,14 +834,14 @@ public class GameState extends BaseAppState {
     }
 
     private String calculerObjectif() {
-        if (archivePrete)  return "Parle au GARDIEN de l'archive (E) pour recuperer les preuves.";
+        if (archivePrete)  return "Le robot s'incline... [E] pour partir avec les preuves, humain.";
         if (qteActif) {
-            StringBuilder sb = new StringBuilder("PORTE FINALE >>  ");
+            StringBuilder sb = new StringBuilder("COMBINAISON DU ROBOT >>  ");
             for (int i = 0; i < sequenceQTE.length; i++)
                 sb.append(i < qteIndex ? "[ok] " : nomsQTE[i] + "  ");
             return sb.toString();
         }
-        if (fuiteSalle5)   return (choixReparer ? "COURS vers la porte finale ! " : "FUIS ! Atteins le fond ! ")
+        if (fuiteSalle5)   return (choixReparer ? "COURS vers le ROBOT gardien au fond ! " : "FUIS ! Atteins le fond ! ")
                                   + "(" + Math.max(0, (int) Math.ceil(fuiteTimer)) + "s)";
         if (generateurRepare) return "Porte 004 : entre la COMBINAISON, puis vois le gardien au fond.";
         if (generateurDetruit) return "AUTODESTRUCTION ! Fonce a la porte 004 et FUIS !";
@@ -1070,8 +1078,9 @@ public class GameState extends BaseAppState {
             if (finTimer <= 0) {
                 app.getStateManager().detach(this);
                 app.getRootNode().detachAllChildren();
-                // Epilogue "A SUIVRE" sur l'ile (texte different selon le choix)
-                app.getStateManager().attach(new FinIleState(finRepare));
+                // Video de fin, puis epilogue "A SUIVRE" sur l'ile
+                // (texte different selon le choix repare/sabote)
+                app.getStateManager().attach(new FinVideoState(finRepare));
             }
             return;
         }
@@ -1143,14 +1152,11 @@ public class GameState extends BaseAppState {
 
         if (alarmeActive) {
             tempsAlarme += tpf;
-            // Le rouge ne tombe PAS d'un coup : on voit d'abord la salle (belle),
-            // puis l'alarme s'installe progressivement (~4s) en rouge pulsant.
-            float montee = Math.min(1f, tempsAlarme / 4f);
-            float pulse  = FastMath.pow(FastMath.sin(tempsAlarme * 6f), 2f);
-            float rouge  = 0.45f + 0.55f * pulse;
-            float r  = (1f - montee) + montee * rouge;  // blanc → rouge
-            float vb = (1f - montee) + montee * 0.04f;  // vert/bleu s'effacent
-            overlay.setColor(new ColorRGBA(r, vb, vb, 1f));
+            // Alarme moins oppressante : l'ecran CLIGNOTE entre rouge et la
+            // couleur normale de la salle (au lieu d'un rouge constant).
+            float blink = 0.5f + 0.5f * FastMath.sin(tempsAlarme * 6f); // 0..1
+            float vb = 1f - blink * 0.92f; // blink=1 → rouge (vb~0.08) · blink=0 → normal (vb=1)
+            overlay.setColor(new ColorRGBA(1f, vb, vb, 1f));
         } else {
             majTeinteEcran(dansLeNoir);
         }
@@ -1163,18 +1169,13 @@ public class GameState extends BaseAppState {
                 batterie.drainer(tpf * 12f); // la course pompe la batterie
             }
             if (choixReparer) {
-                // REPARATION : code fleche a la porte finale (s'active pres du bout)
-                if (!fige && pos.z > 118f) {
-                    qteActif = true; qteIndex = 0;
-                    joueur.setForward(false); joueur.setBackward(false);
-                    joueur.setLeft(false);    joueur.setRight(false);
-                }
-                // puis le gardien remet les preuves (interaction E) → victoire
+                // REPARATION : la combinaison se fait directement SUR le robot
+                // gardien (interaction E), qui te libere → victoire.
             } else {
                 // SABOTAGE : juste courir au fond
                 if (pos.z > 130f) {
                     finRepare = false;
-                    declencherVictoire("Le labo s'autodetruit derriere toi...");
+                    declencherVictoire("Le labo s'autodetruit derriere toi...\nTu es libre. FUIS !");
                 }
             }
             if (!fige && (fuiteTimer <= 0f || batterie.isGameOver())) declencherMort();
@@ -1206,6 +1207,10 @@ public class GameState extends BaseAppState {
                 }
             } else if (porteProche) {
                 hud.setMessageInteraction("[E] Ouvrir la porte");
+            } else if (choixReparer && fuiteSalle5 && proche(POS_ARCHIVE, 6f)) {
+                hud.setMessageInteraction(archivePrete
+                    ? "[E] Le robot te libere..."
+                    : "[E] Entrer la combinaison sur le robot");
             } else if (spatialDocteur != null && proche(POS_DOCTEUR, 3.5f)) {
                 hud.setMessageInteraction("[E] Parler au Dr. W");
             } else if (spatialDaniel != null && proche(POS_DANIEL, 3.5f)) {

@@ -35,9 +35,9 @@ public class VideoIntroState extends BaseAppState {
         int W = app.getCamera().getWidth();
         int H = app.getCamera().getHeight();
 
-        // Plein ecran en conservant le ratio de la video 848x464 (letterbox)
-        float scale = Math.min(W / 848f, H / 464f);
-        float w = 848f * scale, h = 464f * scale;
+        // Plein ecran en conservant le ratio de la video 880x480 (letterbox)
+        float scale = Math.min(W / 880f, H / 480f);
+        float w = 880f * scale, h = 480f * scale;
 
         ecran = new Picture("VideoIntro");
         ecran.setWidth(w);

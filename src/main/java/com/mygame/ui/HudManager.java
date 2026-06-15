@@ -63,6 +63,7 @@ public class HudManager {
     private Node       panneauObjectif;
     private BitmapText texteObjectifEncadre;
     private boolean    objectifVisible = false;
+    private static final float OBJ_H = 108f; // hauteur du cadre objectif (tient 2 lignes)
 
     // Panneau Dialogue NPC (Enigme 2 — Daniel)
     private Node       panneauDialogue;
@@ -205,9 +206,9 @@ public class HudManager {
 
     /** Banniere OBJECTIF : cadre sombre borde cyan (centre haut), titre + contenu. */
     private void construireObjectif() {
-        float w = largeurEcran * 0.54f, h = 78f;
+        float w = largeurEcran * 0.54f, h = OBJ_H;
         float x = (largeurEcran - w) / 2f;
-        float y = hauteurEcran - 112f;
+        float y = hauteurEcran - 112f - (h - 78f); // agrandi vers le BAS (titre inchange)
         panneauObjectif = new Node("Objectif");
         panneauObjectif.setLocalTranslation(x, y, 6f);
         panneauObjectif.attachChild(quad(0, 0, w, h, 0.5f, new ColorRGBA(0.03f, 0.05f, 0.09f, 1f), false));
@@ -461,7 +462,10 @@ public class HudManager {
         }
         texteObjectifEncadre.setText(msg);
         float w = largeurEcran * 0.54f;
-        texteObjectifEncadre.setLocalTranslation(w / 2f - texteObjectifEncadre.getLineWidth() / 2f, 78f - 40f, 2f);
+        // centre verticalement le contenu (1 OU 2 lignes) sous le bandeau titre
+        float th   = texteObjectifEncadre.getHeight();
+        float topY = th / 2f + (OBJ_H - 24f) / 2f;
+        texteObjectifEncadre.setLocalTranslation(w / 2f - texteObjectifEncadre.getLineWidth() / 2f, topY, 2f);
         if (!objectifVisible) { guiNode.attachChild(panneauObjectif); objectifVisible = true; }
     }
 
